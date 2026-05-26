@@ -17,6 +17,12 @@ The demo uses:
 - `@rawtree/sdk` to query the ingested trace rows after the run
 - A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
+### `open-agents/`
+
+Vendored copy of `vercel-labs/open-agents` for adapting its agent metrics,
+user-facing activity, and leaderboard surfaces to RawTree. See
+`open-agents/RAWTREE.md` for source provenance and adaptation notes.
+
 ## Setup
 
 `.env.local` already needs:
