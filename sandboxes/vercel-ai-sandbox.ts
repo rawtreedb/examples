@@ -18,6 +18,10 @@ import {
 import { RawTree } from "@rawtree/sdk";
 import { Sandbox } from "@vercel/sandbox";
 import { registerRawTreeOtel } from "../lib/register-otel.js";
+import {
+  printTraceTimeline,
+  type TraceTimelineRow,
+} from "../lib/trace-timeline.js";
 
 type VercelSandbox = Awaited<ReturnType<typeof Sandbox.create>>;
 type SpanAttributeInput = Record<string, AttributeValue | undefined>;
@@ -39,13 +43,16 @@ const modelId =
   process.env.OPENAI_MODEL ??
   (process.env.AI_GATEWAY_API_KEY ? "openai/gpt-5" : "gpt-5");
 const model = process.env.AI_GATEWAY_API_KEY ? modelId : openai(modelId);
+let runTraceId: string | undefined;
 
 if (!process.env.AI_GATEWAY_API_KEY) {
   requiredEnv("OPENAI_API_KEY");
 }
 
 await withSpan("demo.run", { "demo.run_id": runId }, async (rootSpan) => {
+  runTraceId = rootSpan.spanContext().traceId;
   console.log("run_id:", runId);
+  console.log("trace_id:", runTraceId);
   console.log("trace_table:", telemetry.tableName);
 
   const sandbox = await withSpan(
@@ -91,7 +98,7 @@ await withSpan("demo.run", { "demo.run_id": runId }, async (rootSpan) => {
 });
 
 await forceFlushTraces();
-await printRecentRawTreeSpans();
+await printRawTreeTraceTimeline(requireRunTraceId());
 
 async function runAgent({
   sandbox,
@@ -179,8 +186,11 @@ async function runAgent({
         "The command should print JSON with keys ok, runtime, platform, cwd, and runId.",
         "After the tool result, summarize what happened in one sentence.",
       ].join(" "),
-      stopWhen: stepCountIs(3),
-      toolChoice: { type: "tool", toolName: "bash" },
+      stopWhen: stepCountIs(4),
+      prepareStep: ({ stepNumber }) =>
+        stepNumber === 0
+          ? { toolChoice: { type: "tool", toolName: "bash" } }
+          : undefined,
       experimental_telemetry: {
         isEnabled: true,
         functionId: "sandbox-agent",
@@ -268,28 +278,43 @@ async function forceFlushTraces(): Promise<void> {
   await sleep(1500);
 }
 
-async function printRecentRawTreeSpans(): Promise<void> {
+async function printRawTreeTraceTimeline(traceId: string): Promise<void> {
   const rawtree = new RawTree({
     apiKey: requiredEnv("RAWTREE_API_KEY"),
   });
 
-  const result = await rawtree.query(`
-    WITH toString(__raw_data) AS raw
+  const result = await rawtree.query<TraceTimelineRow>(`
     SELECT
-      JSONExtractString(raw, 'name') AS name,
-      JSONExtractString(raw, 'traceId') AS trace_id,
-      JSONExtractString(raw, 'spanId') AS span_id,
-      JSONExtractString(raw, 'parentSpanId') AS parent_span_id,
-      JSONExtractString(raw, 'kind') AS kind,
-      JSONExtractString(JSONExtractRaw(raw, 'status'), 'code') AS status_code,
-      JSONExtractString(raw, 'startTimeUnixNano') AS start_time_unix_nano
+      name,
+      traceId,
+      spanId,
+      parentSpanId,
+      kind,
+      status,
+      \`service.name\` AS serviceName,
+      \`scope.name\` AS scopeName,
+      startTimeUnixNano,
+      endTimeUnixNano,
+      attributes
     FROM ${tableIdentifier(telemetry.tableName)}
-    WHERE raw LIKE '%${runId}%'
-    ORDER BY start_time_unix_nano DESC
-    LIMIT 20
+    WHERE traceId = ${sqlStringLiteral(traceId)}
+    ORDER BY startTimeUnixNano ASC
+    LIMIT 200
   `);
 
-  console.table(result.data);
+  printTraceTimeline({
+    rows: result.data,
+    runId,
+    tableName: telemetry.tableName,
+    traceId,
+  });
+}
+
+function requireRunTraceId(): string {
+  if (!runTraceId) {
+    throw new Error("Trace id was not recorded for this run.");
+  }
+  return runTraceId;
 }
 
 function requiredEnv(name: string): string {
@@ -329,6 +354,10 @@ function tableIdentifier(value: string): string {
     throw new Error(`Invalid RawTree table name: ${value}`);
   }
   return `\`${value}\``;
+}
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function toError(error: unknown): Error {

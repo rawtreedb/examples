@@ -15,6 +15,7 @@ The demo uses:
 - `@vercel/sandbox` for the full VM sandbox
 - `bash-tool` for the AI SDK bash/read/write toolset
 - `@rawtree/sdk` to query the ingested trace rows after the run
+- A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
 ## Setup
 
@@ -47,8 +48,27 @@ npm install
 npm run sandboxes:vercel-ai
 ```
 
-The script prints the generated `run_id`, runs the agent, flushes traces to
-RawTree, then queries the latest rows from `agent_sandbox_traces`.
+The script prints the generated `run_id` and `trace_id`, runs the agent, flushes
+traces to RawTree, then queries `agent_sandbox_traces` for the full trace and
+prints a terminal timeline.
+
+Example shape:
+
+```text
+RawTree trace timeline
+trace_id  ...
+run_id    ...
+table     agent_sandbox_traces
+spans     12 | duration 4.00s | service rawtree-vercel-ai-sandbox
+
+ +0.00ms    4.00s OK demo.run INTERNAL
+    |-- +100.0ms  700.0ms OK sandbox.create INTERNAL
+    |   provider=vercel  runtime=node24  sandbox=...
+    `--   +1.00s  800.0ms OK ai.toolCall INTERNAL
+        operation=ai.toolCall  scope=ai  tool=bash
+        `--   +1.10s  500.0ms OK sandbox.bash INTERNAL
+            command=node -e "..."  exit=0  stdout_bytes=23
+```
 
 The example declares the trace service and destination table in code:
 
@@ -65,6 +85,8 @@ The runnable sandbox example lives in `sandboxes/vercel-ai-sandbox.ts`. Shared
 OpenTelemetry setup lives in `lib/register-otel.ts`. It exports
 `registerRawTreeOtel`, a generic Node OpenTelemetry registration helper that
 sends OTLP traces to RawTree's `otlp-traces` transform.
+
+The reusable terminal renderer lives in `lib/trace-timeline.ts`.
 
 ```sh
 npm run check
