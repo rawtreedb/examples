@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RawTree Examples
 
-## Getting Started
+Examples for sending agent and sandbox telemetry to RawTree.
 
-First, run the development server:
+## Examples
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+### `sandboxes/vercel-ai-sandbox.ts`
+
+Minimal TypeScript script that sends OpenTelemetry traces from a Vercel Sandbox
+agent run to RawTree with the `otlp-traces` transform.
+
+The demo uses:
+
+- OpenTelemetry Node SDK and OTLP HTTP exporter for trace export
+- `@vercel/sandbox` for the full VM sandbox
+- `bash-tool` for the AI SDK bash/read/write toolset
+- `@rawtree/sdk` to query the ingested trace rows after the run
+
+## Setup
+
+`.env.local` already needs:
+
+```sh
+RAWTREE_API_KEY=...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Add one model credential path:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sh
+OPENAI_API_KEY=...
+# or
+AI_GATEWAY_API_KEY=...
+AI_MODEL=openai/gpt-5
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The Vercel Sandbox SDK also needs local Vercel project auth, typically from:
 
-## Learn More
+```sh
+vercel link
+vercel env pull .env.local
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Run
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sh
+npm install
+npm run sandboxes:vercel-ai
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The script prints the generated `run_id`, runs the agent, flushes traces to
+RawTree, then queries the latest rows from `agent_sandbox_traces`.
 
-## Deploy on Vercel
+The example declares the trace service and destination table in code:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```ts
+const telemetry = registerRawTreeOtel({
+  serviceName: "rawtree-vercel-ai-sandbox",
+  tableName: "agent_sandbox_traces",
+});
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## TypeScript
+
+The runnable sandbox example lives in `sandboxes/vercel-ai-sandbox.ts`. Shared
+OpenTelemetry setup lives in `lib/register-otel.ts`. It exports
+`registerRawTreeOtel`, a generic Node OpenTelemetry registration helper that
+sends OTLP traces to RawTree's `otlp-traces` transform.
+
+```sh
+npm run check
+```
