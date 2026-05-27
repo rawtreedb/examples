@@ -290,6 +290,7 @@ function buildAgentTraceAttributes(params: {
   repoOwner?: string;
   selectedModelId: string;
   sessionId: string;
+  sessionTitle?: string;
   stepNumber: number;
   userId: string;
   username?: string;
@@ -303,6 +304,7 @@ function buildAgentTraceAttributes(params: {
     "repo.name": params.repoName,
     "repo.owner": params.repoOwner,
     "session.id": params.sessionId,
+    "session.title": params.sessionTitle,
     "user.email_domain": getEmailDomain(params.email),
     "user.id": params.userId,
     "user.username": params.username,
@@ -778,6 +780,7 @@ export async function runAgentWorkflow(options: Options) {
             email: options.authSession?.user.email,
             repoName: runtime.repoName,
             repoOwner: runtime.repoOwner,
+            sessionTitle: runtime.sessionTitle,
             userId: options.userId,
             username: options.authSession?.user.username,
           },
@@ -1055,6 +1058,7 @@ const runAgentStep = async (
     email?: string;
     repoName?: string;
     repoOwner?: string;
+    sessionTitle?: string;
     userId: string;
     username?: string;
   },
@@ -1069,6 +1073,7 @@ const runAgentStep = async (
     repoOwner: telemetryContext.repoOwner,
     selectedModelId,
     sessionId,
+    sessionTitle: telemetryContext.sessionTitle,
     stepNumber,
     userId: telemetryContext.userId,
     username: telemetryContext.username,

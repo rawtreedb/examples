@@ -23,6 +23,7 @@ export type RawTreeSandboxTraceSummary = {
   sandboxCreateCount: number;
   sandboxName: string | null;
   sessionId: string | null;
+  sessionTitle: string | null;
   spanCount: number;
   spans: RawTreeSandboxTraceSpan[];
   startedAt: string | null;
@@ -75,6 +76,7 @@ type TraceAccumulator = {
   sandboxCreateCount: number;
   sandboxName: string | null;
   sessionId: string | null;
+  sessionTitle: string | null;
   spanCount: number;
   spans: TraceSpanAccumulator[];
   startNs?: bigint;
@@ -200,6 +202,11 @@ function summarizeSandboxTraces(
       attributes["ai.telemetry.metadata.session.id"],
       attributes["sandbox.session_id"],
     );
+    accumulator.sessionTitle = firstString(
+      accumulator.sessionTitle,
+      attributes["session.title"],
+      attributes["ai.telemetry.metadata.session.title"],
+    );
     accumulator.workflowRunId = firstString(
       accumulator.workflowRunId,
       attributes["workflow.run_id"],
@@ -281,6 +288,7 @@ function getTraceAccumulator(
     sandboxCreateCount: 0,
     sandboxName: null,
     sessionId: null,
+    sessionTitle: null,
     spanCount: 0,
     spans: [],
     traceId,
@@ -312,6 +320,7 @@ function toTraceSummary(trace: TraceAccumulator): RawTreeSandboxTraceSummary {
     sandboxCreateCount: trace.sandboxCreateCount,
     sandboxName: trace.sandboxName,
     sessionId: trace.sessionId,
+    sessionTitle: trace.sessionTitle,
     spanCount: trace.spanCount,
     spans,
     startedAt: nanosToIso(trace.startNs),

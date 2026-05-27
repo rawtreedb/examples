@@ -6,6 +6,7 @@ import {
   ModelPreferencesSectionSkeleton,
   PreferencesSectionSkeleton,
 } from "./preferences-section";
+import { TracingSectionSkeleton } from "./tracing-section";
 import { VercelSectionSkeleton } from "./vercel-section";
 
 function ProfilePageLoading() {
@@ -118,6 +119,21 @@ function AnalyticsPageLoading() {
   );
 }
 
+function TracingPageLoading() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">Tracing</h1>
+        <p className="text-sm text-muted-foreground">
+          Inspect agent sessions, spans, sandbox runtimes, and commands from
+          RawTree traces.
+        </p>
+      </div>
+      <TracingSectionSkeleton />
+    </div>
+  );
+}
+
 export default function SettingsLoading() {
   return <ProfilePageLoading />;
 }
@@ -129,4 +145,5 @@ export {
   ModelsPageLoading,
   PreferencesPageLoading,
   ProfilePageLoading,
+  TracingPageLoading,
 };

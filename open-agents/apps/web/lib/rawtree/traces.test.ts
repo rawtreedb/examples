@@ -39,6 +39,7 @@ describe("RawTree sandbox traces", () => {
             attr("repo.owner", "rawtree"),
             attr("repo.name", "examples"),
             attr("session.id", "session-1"),
+            attr("session.title", "Telemetry demo"),
             attr("workflow.run_id", "workflow-1"),
           ],
           name: "open-agents.agent.step",
@@ -102,6 +103,7 @@ describe("RawTree sandbox traces", () => {
       sandboxCreateCount: 0,
       sandboxName: "session_1",
       sessionId: "session-1",
+      sessionTitle: "Telemetry demo",
       spanCount: 3,
       startedAt: "2026-05-26T10:00:00.000Z",
       traceId: "trace-1",
@@ -170,6 +172,7 @@ describe("RawTree sandbox traces", () => {
           attr("ai.telemetry.metadata.repo.owner", "rawtree"),
           attr("ai.telemetry.metadata.repo.name", "examples"),
           attr("ai.telemetry.metadata.session.id", "session-1"),
+          attr("ai.telemetry.metadata.session.title", "Telemetry demo"),
           attr("ai.model.id", "openai/gpt-5.4-nano"),
         ],
         name: "ai.streamText",
@@ -193,6 +196,7 @@ describe("RawTree sandbox traces", () => {
       repoName: "examples",
       repoOwner: "rawtree",
       sessionId: "session-1",
+      sessionTitle: "Telemetry demo",
       userId: "user-1",
     });
   });

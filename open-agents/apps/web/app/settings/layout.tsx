@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Cable,
@@ -29,6 +30,7 @@ import { AccountsSectionSkeleton } from "./accounts-section";
 import { AnalyticsSectionSkeleton } from "./analytics-section";
 import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
+import { TracingSectionSkeleton } from "./tracing-section";
 
 /** Skeleton shown while auth is loading for the combined profile page */
 function ProfilePageSkeleton() {
@@ -94,6 +96,12 @@ const baseSidebarItems = [
     label: "Analytics",
     href: "/settings/analytics",
     icon: BarChart3,
+  },
+  {
+    id: "tracing",
+    label: "Tracing",
+    href: "/settings/tracing",
+    icon: Activity,
   },
 ];
 
@@ -223,7 +231,12 @@ function SettingsLayout({
             {activeItem?.label ?? "Settings"}
           </span>
         </div>
-        <div className="mx-auto max-w-5xl space-y-6 px-3 py-8 md:px-4 md:py-10">
+        <div
+          className={cn(
+            "mx-auto space-y-6 px-3 py-8 md:px-4 md:py-10",
+            activeItem?.id === "tracing" ? "max-w-7xl" : "max-w-5xl",
+          )}
+        >
           {children}
         </div>
       </main>
@@ -245,6 +258,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <ModelVariantsSectionSkeleton />
     ) : activeItem?.id === "analytics" ? (
       <AnalyticsSectionSkeleton />
+    ) : activeItem?.id === "tracing" ? (
+      <TracingSectionSkeleton />
     ) : (
       <ProfilePageSkeleton />
     );

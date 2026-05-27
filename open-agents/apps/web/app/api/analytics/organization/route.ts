@@ -4,6 +4,7 @@ import {
   getRawTreeOrganizationUsageDays,
   getRawTreeOrganizationUsageUsers,
 } from "@/lib/rawtree/usage";
+import { enrichSandboxTracesWithSessionMetadata } from "@/lib/rawtree/enrich-traces";
 import { getRawTreeOrganizationSandboxTraces } from "@/lib/rawtree/traces";
 import { getOrganizationRepositoryEdits } from "@/lib/db/organization-analytics";
 import { getSessionFromReq } from "@/lib/session/server";
@@ -46,10 +47,14 @@ export async function GET(req: NextRequest) {
       ? { range: rangeResult.range }
       : undefined;
     if (!users) {
-      const [repositories, sandboxTraces] = await Promise.all([
+      const [repositories, rawSandboxTraces] = await Promise.all([
         getOrganizationRepositoryEdits(domain, rangeOptions),
         getRawTreeOrganizationSandboxTraces(domain, rangeOptions),
       ]);
+      const sandboxTraces = await enrichSandboxTracesWithSessionMetadata(
+        domain,
+        rawSandboxTraces,
+      );
       return Response.json({
         organization: {
           domain,
@@ -72,11 +77,15 @@ export async function GET(req: NextRequest) {
       ...rangeOptions,
       ...(selectedUserIds.length > 0 ? { userIds: selectedUserIds } : {}),
     };
-    const [usage, repositories, sandboxTraces] = await Promise.all([
+    const [usage, repositories, rawSandboxTraces] = await Promise.all([
       getRawTreeOrganizationUsageDays(domain, queryOptions),
       getOrganizationRepositoryEdits(domain, queryOptions),
       getRawTreeOrganizationSandboxTraces(domain, queryOptions),
     ]);
+    const sandboxTraces = await enrichSandboxTracesWithSessionMetadata(
+      domain,
+      rawSandboxTraces,
+    );
 
     return Response.json({
       organization: {

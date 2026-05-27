@@ -222,6 +222,7 @@ export async function POST(req: Request) {
         "user.email_domain": getEmailDomain(session.user.email),
         "user.username": session.user.username,
         "session.id": sessionId,
+        "session.title": sessionRecord.title,
         "repo.owner": repositoryTelemetry?.owner,
         "repo.name": repositoryTelemetry?.repo,
         "sandbox.provider": "vercel",

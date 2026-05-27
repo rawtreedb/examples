@@ -12,6 +12,7 @@ import {
   type NewShare,
   sessions,
   shares,
+  users,
 } from "./schema";
 
 export function normalizeLegacySandboxState(
@@ -113,6 +114,43 @@ export async function getSessionById(sessionId: string) {
 export type SessionRecord = NonNullable<
   Awaited<ReturnType<typeof getSessionById>>
 >;
+
+export type SessionTraceMetadata = {
+  createdAt: Date;
+  id: string;
+  repoName: string | null;
+  repoOwner: string | null;
+  title: string;
+};
+
+export async function getSessionTraceMetadataByIds(
+  sessionIds: string[],
+  domain?: string,
+): Promise<Map<string, SessionTraceMetadata>> {
+  const uniqueSessionIds = [...new Set(sessionIds.filter(Boolean))];
+  if (uniqueSessionIds.length === 0) {
+    return new Map();
+  }
+
+  const sessionIdFilter = inArray(sessions.id, uniqueSessionIds);
+  const domainFilter = domain
+    ? eq(sql<string>`lower(split_part(${users.email}, '@', 2))`, domain)
+    : undefined;
+
+  const rows = await db
+    .select({
+      createdAt: sessions.createdAt,
+      id: sessions.id,
+      repoName: sessions.repoName,
+      repoOwner: sessions.repoOwner,
+      title: sessions.title,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(domainFilter ? and(sessionIdFilter, domainFilter) : sessionIdFilter);
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
 
 export async function getShareById(shareId: string) {
   return db.query.shares.findFirst({
