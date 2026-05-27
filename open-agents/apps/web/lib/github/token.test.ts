@@ -4,7 +4,10 @@ let getAccessTokenResult: { accessToken?: string | null } | null;
 let getAccessTokenError: Error | null;
 
 const getAccessTokenSpy = mock(
-  async (_input: { body: { providerId: string; userId: string } }) => {
+  async (_input: {
+    body: { providerId: string; userId: string };
+    headers: Headers;
+  }) => {
     if (getAccessTokenError) {
       throw getAccessTokenError;
     }
@@ -16,9 +19,7 @@ const getAccessTokenSpy = mock(
 mock.module("server-only", () => ({}));
 
 mock.module("next/headers", () => ({
-  headers: async () => {
-    throw new Error("headers should not be called");
-  },
+  headers: async () => new Headers({ host: "localhost:3000" }),
 }));
 
 mock.module("@/lib/auth/config", () => ({
@@ -46,7 +47,7 @@ describe("getUserGitHubToken", () => {
     getAccessTokenError = null;
   });
 
-  test("looks up access tokens by user id without request headers", async () => {
+  test("looks up access tokens by user id with request headers", async () => {
     const { getUserGitHubToken } = await tokenModulePromise;
 
     const token = await getUserGitHubToken("user-1");
@@ -55,6 +56,7 @@ describe("getUserGitHubToken", () => {
     expect(getAccessTokenSpy).toHaveBeenCalledTimes(1);
     expect(getAccessTokenSpy.mock.calls[0]?.[0]).toEqual({
       body: { providerId: "github", userId: "user-1" },
+      headers: new Headers({ host: "localhost:3000" }),
     });
   });
 

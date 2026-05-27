@@ -35,6 +35,27 @@ function redirectWithInstallCookies(
   return response;
 }
 
+function buildGitHubInstallUrl(appSlug: string, state: string): URL {
+  const installUrl = new URL(
+    `https://github.com/apps/${appSlug}/installations/new`,
+  );
+  installUrl.searchParams.set("state", state);
+  return installUrl;
+}
+
+function buildGitHubTargetInstallUrl(
+  appSlug: string,
+  state: string,
+  targetId: string,
+): URL {
+  const installUrl = new URL(
+    `https://github.com/apps/${appSlug}/installations/new/permissions`,
+  );
+  installUrl.searchParams.set("state", state);
+  installUrl.searchParams.set("target_id", targetId);
+  return installUrl;
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
   const session = await getServerSession();
   const redirectTo = sanitizeInternalRedirect(
@@ -65,12 +86,11 @@ export async function GET(req: NextRequest): Promise<Response> {
   // if a specific target_id is provided, go directly to install for that account
   const targetId = req.nextUrl.searchParams.get("target_id");
   if (targetId && /^\d+$/.test(targetId)) {
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new/permissions`,
+    return redirectWithInstallCookies(
+      buildGitHubTargetInstallUrl(appSlug, state, targetId),
+      redirectTo,
+      state,
     );
-    installUrl.searchParams.set("state", state);
-    installUrl.searchParams.set("target_id", targetId);
-    return redirectWithInstallCookies(installUrl, redirectTo, state);
   }
 
   // no linked github account — redirect to get-started to connect first
@@ -87,12 +107,11 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (reconnect === "1") {
     const accountId = await getGitHubAccountId(session.user.id);
     if (accountId) {
-      const installUrl = new URL(
-        `https://github.com/apps/${appSlug}/installations/new/permissions`,
+      return redirectWithInstallCookies(
+        buildGitHubTargetInstallUrl(appSlug, state, accountId),
+        redirectTo,
+        state,
       );
-      installUrl.searchParams.set("state", state);
-      installUrl.searchParams.set("target_id", accountId);
-      return redirectWithInstallCookies(installUrl, redirectTo, state);
     }
   }
 
@@ -116,12 +135,12 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   if (installations.length === 0) {
-    // no installations — route to install page
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new/permissions`,
+    // no installations and no selected target yet — let GitHub show the account picker.
+    return redirectWithInstallCookies(
+      buildGitHubInstallUrl(appSlug, state),
+      redirectTo,
+      state,
     );
-    installUrl.searchParams.set("state", state);
-    return redirectWithInstallCookies(installUrl, redirectTo, state);
   }
 
   // already has installations — show account/org picker for additional installs

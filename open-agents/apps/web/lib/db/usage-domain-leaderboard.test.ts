@@ -1,15 +1,34 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildUsageDomainLeaderboardRows,
   getUsageLeaderboardDomain,
 } from "./usage-domain-leaderboard";
 
+const originalLeaderboardDomains = process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS;
+
 describe("getUsageLeaderboardDomain", () => {
+  afterEach(() => {
+    if (originalLeaderboardDomains === undefined) {
+      delete process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS;
+    } else {
+      process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = originalLeaderboardDomains;
+    }
+  });
+
   test("accepts verified internal domains", () => {
     expect(getUsageLeaderboardDomain("Alice@Vercel.com")).toBe("vercel.com");
   });
 
+  test("accepts configured organization domains", () => {
+    process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = "tinybird.co, rawtree.com";
+
+    expect(getUsageLeaderboardDomain("alice@tinybird.co")).toBe("tinybird.co");
+    expect(getUsageLeaderboardDomain("bob@rawtree.com")).toBe("rawtree.com");
+  });
+
   test("rejects personal and unverified domains", () => {
+    process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = "gmail.com";
+
     expect(getUsageLeaderboardDomain("alice@gmail.com")).toBeNull();
     expect(getUsageLeaderboardDomain("alice@hotmail.com")).toBeNull();
     expect(getUsageLeaderboardDomain("alice@example.com")).toBeNull();

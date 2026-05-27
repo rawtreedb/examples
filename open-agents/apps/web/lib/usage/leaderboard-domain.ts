@@ -13,7 +13,7 @@ const PERSONAL_EMAIL_DOMAINS = new Set([
   "yahoo.com",
 ]);
 
-const VERIFIED_USAGE_LEADERBOARD_DOMAINS = new Set(["vercel.com"]);
+const DEFAULT_USAGE_LEADERBOARD_DOMAINS = new Set(["vercel.com"]);
 
 /**
  * Returns the email domain when the user is eligible for the internal
@@ -38,7 +38,17 @@ export function getUsageLeaderboardDomain(
     return null;
   }
 
-  if (!VERIFIED_USAGE_LEADERBOARD_DOMAINS.has(domain)) {
+  const verifiedDomains = new Set(DEFAULT_USAGE_LEADERBOARD_DOMAINS);
+  for (const rawDomain of (
+    process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS ?? ""
+  ).split(",")) {
+    const configuredDomain = rawDomain.trim().toLowerCase();
+    if (configuredDomain && !PERSONAL_EMAIL_DOMAINS.has(configuredDomain)) {
+      verifiedDomains.add(configuredDomain);
+    }
+  }
+
+  if (!verifiedDomains.has(domain)) {
     return null;
   }
 
