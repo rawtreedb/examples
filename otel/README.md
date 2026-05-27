@@ -10,7 +10,7 @@ The important RawTree log changes are:
 
 - Use a RawTree API key in `RAWTREE_API_KEY`.
 - Send OTLP logs to a table insert endpoint:
-  `https://api.rawtree.com/v1/tables/otel_node_logs?transform=otlp-logs`.
+  `https://api.rawtree.com/v1/tables/otel_logs?transform=otlp-logs`.
 - Query the destination table after export.
 
 Run it with:
@@ -19,7 +19,7 @@ Run it with:
 npm run otel:logs
 ```
 
-The example writes to `otel_node_logs`.
+The example writes to `otel_logs`.
 
 ## Traces
 
@@ -29,7 +29,7 @@ prints the queried trace timeline.
 The important RawTree trace endpoint is:
 
 ```text
-https://api.rawtree.com/v1/tables/otel_node_traces?transform=otlp-traces
+https://api.rawtree.com/v1/tables/otel_traces?transform=otlp-traces
 ```
 
 Run it with:
@@ -38,7 +38,7 @@ Run it with:
 npm run otel:traces
 ```
 
-The example writes to `otel_node_traces`.
+The example writes to `otel_traces`.
 
 ## Setup
 

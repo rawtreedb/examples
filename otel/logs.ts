@@ -18,8 +18,8 @@ type RawTreeLogRow = {
 };
 
 const rawtreeApiUrl = "https://api.rawtree.com";
-const rawtreeTable = "otel_node_logs";
-const serviceName = "rawtree-node-otel-logs";
+const rawtreeTable = "otel_logs";
+const serviceName = "rawtree-otel-logs";
 const runId = randomUUID();
 const endpoint = `${rawtreeApiUrl}/v1/tables/${encodeURIComponent(
   rawtreeTable,

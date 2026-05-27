@@ -26,7 +26,7 @@ transform, then queries the inserted rows by a generated `demo.run_id`.
 The RawTree OTLP logs endpoint is:
 
 ```text
-https://api.rawtree.com/v1/tables/otel_node_logs?transform=otlp-logs
+https://api.rawtree.com/v1/tables/otel_logs?transform=otlp-logs
 ```
 
 ### `otel/traces.ts`
@@ -38,7 +38,7 @@ the inserted rows by `traceId` and prints the trace timeline.
 The RawTree OTLP traces endpoint is:
 
 ```text
-https://api.rawtree.com/v1/tables/otel_node_traces?transform=otlp-traces
+https://api.rawtree.com/v1/tables/otel_traces?transform=otlp-traces
 ```
 
 ### `open-agents/`

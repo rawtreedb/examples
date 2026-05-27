@@ -21,8 +21,8 @@ import {
 
 type SpanAttributeInput = Record<string, AttributeValue | undefined>;
 
-const rawtreeTable = "otel_node_traces";
-const serviceName = "rawtree-node-otel-traces";
+const rawtreeTable = "otel_traces";
+const serviceName = "rawtree-otel-traces";
 const runId = randomUUID();
 const endpoint = `https://api.rawtree.com/v1/tables/${rawtreeTable}?transform=otlp-traces`;
 
