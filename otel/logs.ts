@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -7,15 +6,13 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { RawTree } from "@rawtree/sdk";
-
-type RawTreeLogRow = {
-  attributes?: unknown;
-  body?: unknown;
-  runId?: unknown;
-  scopeName?: unknown;
-  serviceName?: unknown;
-  severityText?: unknown;
-};
+import {
+  formatLogRow,
+  requiredEnv,
+  sqlStringLiteral,
+  tableIdentifier,
+  type RawTreeLogRow,
+} from "./utils.js";
 
 const rawtreeApiUrl = "https://api.rawtree.com";
 const rawtreeTable = "otel_logs";
@@ -109,54 +106,4 @@ const result = await rawtree.query<RawTreeLogRow>(`
 console.log(`RawTree logs (${result.data.length} rows)`);
 for (const row of result.data) {
   console.log(formatLogRow(row));
-}
-
-function formatLogRow(row: RawTreeLogRow): string {
-  const parts = [
-    `[${stringValue(row.severityText) || "UNKNOWN"}]`,
-    bodyValue(row.body),
-    `service=${stringValue(row.serviceName) || "unknown"}`,
-  ];
-  const scopeName = stringValue(row.scopeName);
-  if (scopeName) {
-    parts.push(`scope=${scopeName}`);
-  }
-  return parts.join(" ");
-}
-
-function bodyValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (isRecord(value) && typeof value.stringValue === "string") {
-    return value.stringValue;
-  }
-  return JSON.stringify(value);
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function tableIdentifier(value: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw new Error(`Invalid RawTree table name: ${value}`);
-  }
-  return `\`${value}\``;
-}
-
-function sqlStringLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Set ${name} in .env.local before running the example.`);
-  }
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
