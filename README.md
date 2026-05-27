@@ -17,6 +17,30 @@ The demo uses:
 - `@rawtree/sdk` to query the ingested trace rows after the run
 - A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
+### `examples/otel/logs.ts`
+
+Node.js OpenTelemetry logs example adapted from PostHog's OTLP logs setup to
+RawTree. It sends log records to a RawTree table using the `otlp-logs`
+transform, then queries the inserted rows by a generated `demo.run_id`.
+
+The RawTree OTLP logs endpoint is:
+
+```text
+https://api.rawtree.com/v1/tables/otel_node_logs?transform=otlp-logs
+```
+
+### `examples/otel/traces.ts`
+
+Node.js OpenTelemetry traces example for RawTree. It creates a small parent-child
+span tree, exports it to RawTree with the `otlp-traces` transform, then queries
+the inserted rows by `traceId` and prints the trace timeline.
+
+The RawTree OTLP traces endpoint is:
+
+```text
+https://api.rawtree.com/v1/tables/otel_node_traces?transform=otlp-traces
+```
+
 ### `open-agents/`
 
 Vendored copy of `vercel-labs/open-agents` for adapting its agent metrics,
@@ -52,6 +76,8 @@ vercel env pull .env.local
 ```sh
 npm install
 npm run sandboxes:vercel-ai
+npm run otel:logs
+npm run otel:traces
 ```
 
 The script prints the generated `run_id` and `trace_id`, runs the agent, flushes

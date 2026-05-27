@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["sandboxes/**/*.ts", "lib/**/*.ts"]
+  "include": ["sandboxes/**/*.ts", "examples/**/*.ts", "lib/**/*.ts"]
 }
