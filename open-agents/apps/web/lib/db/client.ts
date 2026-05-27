@@ -4,12 +4,15 @@ import * as schema from "./schema";
 
 type DrizzleClient = ReturnType<typeof drizzle<typeof schema>>;
 
-let _db: DrizzleClient | null = null;
+const globalForDb = globalThis as typeof globalThis & {
+  __openAgentsDb?: DrizzleClient;
+  __openAgentsPostgresClient?: postgres.Sql;
+};
 
 function getPostgresMaxConnections() {
   const rawValue = process.env.POSTGRES_MAX_CONNECTIONS;
   if (!rawValue) {
-    return 3;
+    return 1;
   }
 
   const parsedValue = Number.parseInt(rawValue, 10);
@@ -22,15 +25,24 @@ function getPostgresMaxConnections() {
 
 export const db = new Proxy({} as DrizzleClient, {
   get(_, prop) {
-    if (!_db) {
+    if (!globalForDb.__openAgentsDb) {
       if (!process.env.POSTGRES_URL) {
         throw new Error("POSTGRES_URL environment variable is required");
       }
-      const client = postgres(process.env.POSTGRES_URL, {
-        max: getPostgresMaxConnections(),
-      });
-      _db = drizzle(client, { schema });
+      globalForDb.__openAgentsPostgresClient ??= postgres(
+        process.env.POSTGRES_URL,
+        {
+          max: getPostgresMaxConnections(),
+        },
+      );
+      globalForDb.__openAgentsDb = drizzle(
+        globalForDb.__openAgentsPostgresClient,
+        {
+          schema,
+        },
+      );
     }
-    return Reflect.get(_db, prop);
+
+    return Reflect.get(globalForDb.__openAgentsDb, prop);
   },
 });

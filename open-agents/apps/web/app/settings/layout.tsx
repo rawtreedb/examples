@@ -2,13 +2,13 @@
 
 import {
   ArrowLeft,
+  BarChart3,
   Cable,
   LogOut,
   Menu,
   Settings as SettingsIcon,
   ShieldAlert,
   SlidersHorizontal,
-  Trophy,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,7 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
-import { LeaderboardSectionSkeleton } from "./leaderboard-section";
+import { AnalyticsSectionSkeleton } from "./analytics-section";
 import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 
@@ -90,10 +90,10 @@ const baseSidebarItems = [
     icon: SlidersHorizontal,
   },
   {
-    id: "leaderboard",
-    label: "Leaderboard",
-    href: "/settings/leaderboard",
-    icon: Trophy,
+    id: "analytics",
+    label: "Analytics",
+    href: "/settings/analytics",
+    icon: BarChart3,
   },
 ];
 
@@ -243,8 +243,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "models" ? (
       <ModelVariantsSectionSkeleton />
-    ) : activeItem?.id === "leaderboard" ? (
-      <LeaderboardSectionSkeleton />
+    ) : activeItem?.id === "analytics" ? (
+      <AnalyticsSectionSkeleton />
     ) : (
       <ProfilePageSkeleton />
     );

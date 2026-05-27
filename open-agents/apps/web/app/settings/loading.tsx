@@ -1,4 +1,5 @@
 import { AccountsSectionSkeleton } from "./accounts-section";
+import { AnalyticsSectionSkeleton } from "./analytics-section";
 import { LeaderboardSectionSkeleton } from "./leaderboard-section";
 import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import {
@@ -103,11 +104,26 @@ function LeaderboardPageLoading() {
   );
 }
 
+function AnalyticsPageLoading() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">Analytics</h1>
+        <p className="text-sm text-muted-foreground">
+          Organization usage analytics powered by RawTree.
+        </p>
+      </div>
+      <AnalyticsSectionSkeleton />
+    </div>
+  );
+}
+
 export default function SettingsLoading() {
   return <ProfilePageLoading />;
 }
 
 export {
+  AnalyticsPageLoading,
   ConnectionsPageLoading,
   LeaderboardPageLoading,
   ModelsPageLoading,

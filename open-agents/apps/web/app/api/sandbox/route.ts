@@ -37,6 +37,7 @@ import {
 } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { getEmailDomain, withRawTreeSpan } from "@/lib/rawtree/tracing";
 // import { buildDevelopmentDotenvFromVercelProject } from "@/lib/vercel/projects";
 // import { getUserVercelToken } from "@/lib/vercel/token";
 
@@ -156,6 +157,12 @@ export async function POST(req: Request) {
   // verify repo access (user permissions ∩ installation scope) and get
   // a repo-scoped read token for clone/setup when a repo is provided
   let setupToken: ScopedInstallationToken | undefined;
+  let repositoryTelemetry:
+    | {
+        owner: string;
+        repo: string;
+      }
+    | undefined;
 
   if (repoUrl) {
     const parsedRepo = parseGitHubHttpsUrl(repoUrl);
@@ -165,6 +172,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    repositoryTelemetry = parsedRepo;
 
     const access = await verifyRepoAccess({
       userId: session.user.id,
@@ -207,24 +215,41 @@ export async function POST(req: Request) {
         `${session.user.username}@users.noreply.github.com`,
     };
 
-    sandbox = await connectSandbox({
-      state: {
-        type: "vercel",
-        ...(sandboxName ? { sandboxName } : {}),
-        source,
+    sandbox = await withRawTreeSpan(
+      "open-agents.sandbox.provision",
+      {
+        "user.id": session.user.id,
+        "user.email_domain": getEmailDomain(session.user.email),
+        "user.username": session.user.username,
+        "session.id": sessionId,
+        "repo.owner": repositoryTelemetry?.owner,
+        "repo.name": repositoryTelemetry?.repo,
+        "sandbox.provider": "vercel",
+        "sandbox.name": sandboxName,
+        "sandbox.source.repo_url": repoUrl,
+        "sandbox.source.branch": branch,
+        "sandbox.source.new_branch": isNewBranch ? branch : undefined,
       },
-      options: {
-        githubToken: setupToken?.token,
-        gitUser,
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        vcpus: DEFAULT_SANDBOX_VCPUS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-        persistent: !!sandboxName,
-        resume: !!sandboxName,
-        createIfMissing: !!sandboxName,
-      },
-    });
+      () =>
+        connectSandbox({
+          state: {
+            type: "vercel",
+            ...(sandboxName ? { sandboxName } : {}),
+            source,
+          },
+          options: {
+            githubToken: setupToken?.token,
+            gitUser,
+            timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+            vcpus: DEFAULT_SANDBOX_VCPUS,
+            ports: DEFAULT_SANDBOX_PORTS,
+            baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+            persistent: !!sandboxName,
+            resume: !!sandboxName,
+            createIfMissing: !!sandboxName,
+          },
+        }),
+    );
   } finally {
     if (setupToken) {
       await revokeInstallationToken(setupToken.token);

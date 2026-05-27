@@ -1,5 +1,10 @@
 import type { SandboxState } from "@open-agents/sandbox";
-import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
+import {
+  stepCountIs,
+  ToolLoopAgent,
+  type TelemetrySettings,
+  type ToolSet,
+} from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import {
@@ -44,6 +49,7 @@ const callOptionsSchema = z.object({
   subagentModel: z.custom<OpenAgentModelInput>().optional(),
   customInstructions: z.string().optional(),
   skills: z.custom<SkillMetadata[]>().optional(),
+  telemetryMetadata: z.custom<TelemetrySettings["metadata"]>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -114,6 +120,7 @@ export const openAgent = new ToolLoopAgent({
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
+    const telemetryMetadata = options.telemetryMetadata;
 
     const instructions = buildSystemPrompt({
       cwd: sandbox.workingDirectory,
@@ -132,6 +139,18 @@ export const openAgent = new ToolLoopAgent({
         model: callModel,
       }),
       instructions,
+      experimental_telemetry: {
+        ...settings.experimental_telemetry,
+        functionId:
+          settings.experimental_telemetry?.functionId ?? "open-agent.step",
+        isEnabled: true,
+        metadata: {
+          ...settings.experimental_telemetry?.metadata,
+          ...telemetryMetadata,
+        },
+        recordInputs: settings.experimental_telemetry?.recordInputs ?? false,
+        recordOutputs: settings.experimental_telemetry?.recordOutputs ?? false,
+      },
       experimental_context: {
         sandbox,
         skills,

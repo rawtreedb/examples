@@ -1,4 +1,9 @@
-import { Sandbox as VercelSandboxSDK } from "@vercel/sandbox";
+import {
+  Sandbox as VercelSandboxSDK,
+  type Command,
+  type CommandFinished,
+} from "@vercel/sandbox";
+import type { Span } from "@opentelemetry/api";
 import type { Dirent } from "fs";
 import type {
   ExecResult,
@@ -8,6 +13,12 @@ import type {
   SnapshotResult,
 } from "../interface";
 import type { SandboxStatus } from "../types";
+import {
+  recordSpanError,
+  setSpanStatusFromExitCode,
+  withSandboxSpan,
+  type SandboxTelemetryAttributes,
+} from "../telemetry";
 import type { VercelSandboxConfig, VercelSandboxConnectConfig } from "./config";
 import type { VercelState } from "./state";
 
@@ -34,6 +45,23 @@ interface SandboxNetworkRule {
 interface SandboxNetworkPolicy {
   allow: Record<string, SandboxNetworkRule[]>;
 }
+
+type VercelCommandParams = {
+  args?: string[];
+  cmd: string;
+  cwd?: string;
+  detached?: boolean;
+  env?: Record<string, string>;
+  signal?: AbortSignal;
+  sudo?: boolean;
+};
+
+type VercelCommandRunner = {
+  runCommand(
+    params: VercelCommandParams & { detached: true },
+  ): Promise<Command>;
+  runCommand(params: VercelCommandParams): Promise<CommandFinished>;
+};
 
 const DEFAULT_NETWORK_POLICY: SandboxNetworkPolicy = {
   allow: {
@@ -121,6 +149,80 @@ async function clearGitHubCredentialBrokeringBestEffort(
   } catch (error) {
     console.warn("[VercelSandbox] failed to clear GitHub setup auth:", error);
   }
+}
+
+async function runFinishedCommandWithSpan(
+  runner: VercelCommandRunner,
+  params: VercelCommandParams,
+  attributes: SandboxTelemetryAttributes,
+): Promise<CommandFinished> {
+  return withSandboxSpan(
+    "sandbox.command",
+    buildCommandAttributes(params, attributes),
+    async (span) => {
+      const result = await runner.runCommand(params);
+      span.setAttributes({
+        "sandbox.command.id": result.cmdId,
+        "sandbox.command.exit_code": result.exitCode,
+      });
+      setSpanStatusFromExitCode(span, result.exitCode);
+      return result;
+    },
+  );
+}
+
+async function runDetachedCommandWithSpan(
+  runner: VercelCommandRunner,
+  params: VercelCommandParams & { detached: true },
+  attributes: SandboxTelemetryAttributes,
+): Promise<Command> {
+  return withSandboxSpan(
+    "sandbox.command",
+    buildCommandAttributes(params, attributes),
+    async (span) => {
+      const result = await runner.runCommand(params);
+      span.setAttributes({
+        "sandbox.command.id": result.cmdId,
+      });
+      return result;
+    },
+  );
+}
+
+function buildCommandAttributes(
+  params: VercelCommandParams,
+  attributes: SandboxTelemetryAttributes,
+): SandboxTelemetryAttributes {
+  return {
+    "sandbox.provider": "vercel",
+    "sandbox.command": formatCommand(params),
+    "sandbox.command.cmd": params.cmd,
+    "sandbox.command.cwd": params.cwd,
+    "sandbox.command.detached": params.detached ?? false,
+    "sandbox.command.args": params.args,
+    ...attributes,
+  };
+}
+
+function formatCommand(params: VercelCommandParams): string {
+  const args = params.args?.length ? ` ${params.args.join(" ")}` : "";
+  return `${params.cmd}${args}`;
+}
+
+function getCreateSourceKind(config: VercelSandboxConfig): string {
+  if (config.restoreSnapshotId) {
+    return "restore-snapshot";
+  }
+
+  if (config.baseSnapshotId) {
+    return config.source ? "base-snapshot-with-git" : "base-snapshot";
+  }
+
+  if (config.source) {
+    return "git";
+  }
+
+  return "empty";
 }
 
 type VercelSandboxSession = ReturnType<
@@ -506,6 +608,30 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
   static async create(
     config: VercelSandboxConfig = {},
   ): Promise<VercelSandbox> {
+    return withSandboxSpan(
+      "sandbox.create",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": config.name,
+        "sandbox.runtime": config.runtime ?? "node22",
+        "sandbox.source": getCreateSourceKind(config),
+        "sandbox.source.repo": config.source?.url,
+        "sandbox.source.branch": config.source?.branch,
+        "sandbox.source.new_branch": config.source?.newBranch,
+        "sandbox.restore_snapshot_id": config.restoreSnapshotId,
+        "sandbox.base_snapshot_id": config.baseSnapshotId,
+        "sandbox.persistent": config.persistent ?? true,
+        "sandbox.timeout_ms": config.timeout ?? 300_000,
+        "sandbox.vcpus": config.vcpus ?? 4,
+      },
+      (span) => VercelSandbox.createWithSpan(config, span),
+    );
+  }
+
+  private static async createWithSpan(
+    config: VercelSandboxConfig,
+    span: Span,
+  ): Promise<VercelSandbox> {
     const {
       name,
       source,
@@ -583,11 +709,18 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       }
       cloneArgs.push(source.url, ".");
 
-      const cloneResult = await sdk.runCommand({
-        cmd: "git",
-        args: cloneArgs,
-        cwd: workingDirectory,
-      });
+      const cloneResult = await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: cloneArgs,
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
 
       if (cloneResult.exitCode !== 0) {
         if (githubToken) {
@@ -602,25 +735,46 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     // Initialize git repo for empty sandboxes (no source provided)
     // This ensures git commands work consistently (e.g., for diff viewing)
     if (!source && !restoreSnapshotId && !skipGitWorkspaceBootstrap) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["init"],
-        cwd: workingDirectory,
-      });
+      await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: ["init"],
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
     }
 
     // Configure git user for commits if provided (skip when no repo was created)
     if (gitUser && (source || !skipGitWorkspaceBootstrap)) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["config", "user.name", gitUser.name],
-        cwd: workingDirectory,
-      });
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["config", "user.email", gitUser.email],
-        cwd: workingDirectory,
-      });
+      await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: ["config", "user.name", gitUser.name],
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
+      await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: ["config", "user.email", gitUser.email],
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
     }
 
     // Create initial empty commit for empty sandboxes so HEAD exists
@@ -632,11 +786,18 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       gitUser &&
       !skipGitWorkspaceBootstrap
     ) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["commit", "--allow-empty", "-m", "Initial commit"],
-        cwd: workingDirectory,
-      });
+      await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: ["commit", "--allow-empty", "-m", "Initial commit"],
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
     }
 
     // Track the current branch
@@ -644,11 +805,18 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
 
     // Create and checkout a new branch if specified
     if (source?.newBranch) {
-      const checkoutResult = await sdk.runCommand({
-        cmd: "git",
-        args: ["checkout", "-b", source.newBranch],
-        cwd: workingDirectory,
-      });
+      const checkoutResult = await runFinishedCommandWithSpan(
+        sdk,
+        {
+          cmd: "git",
+          args: ["checkout", "-b", source.newBranch],
+          cwd: workingDirectory,
+        },
+        {
+          "sandbox.name": sdk.name,
+          "sandbox.command.phase": "setup",
+        },
+      );
 
       if (checkoutResult.exitCode !== 0) {
         if (githubToken) {
@@ -671,6 +839,15 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     // Capture startTime AFTER all setup operations so users get their full timeout duration.
     const startTime = Date.now();
     const session = sdk.currentSession();
+    span.setAttributes({
+      "sandbox.name": sdk.name,
+      "sandbox.session_id": session.sessionId,
+      "sandbox.status": session.status,
+      "sandbox.runtime.actual": session.runtime,
+      "sandbox.region": session.region,
+      "sandbox.timeout_ms.actual": session.timeout,
+      "sandbox.vcpus.actual": session.vcpus,
+    });
     const sandbox = new VercelSandbox(
       sdk,
       session,
@@ -713,12 +890,43 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       resume?: boolean;
     } = {},
   ): Promise<VercelSandbox> {
+    return withSandboxSpan(
+      "sandbox.connect",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": sandboxName,
+        "sandbox.resume": options.resume ?? false,
+      },
+      (span) => VercelSandbox.connectWithSpan(sandboxName, options, span),
+    );
+  }
+
+  private static async connectWithSpan(
+    sandboxName: string,
+    options: {
+      env?: Record<string, string>;
+      githubToken?: string;
+      hooks?: SandboxHooks;
+      remainingTimeout?: number;
+      ports?: number[];
+      resume?: boolean;
+    },
+    span: Span,
+  ): Promise<VercelSandbox> {
     const sdk = await VercelSandboxSDK.get({
       name: sandboxName,
       resume: options.resume ?? false,
     });
     await syncGitHubCredentialBrokering(sdk, undefined);
     const session = sdk.currentSession();
+    span.setAttributes({
+      "sandbox.session_id": session.sessionId,
+      "sandbox.status": session.status,
+      "sandbox.runtime.actual": session.runtime,
+      "sandbox.region": session.region,
+      "sandbox.timeout_ms.actual": session.timeout,
+      "sandbox.vcpus.actual": session.vcpus,
+    });
 
     // Use provided remainingTimeout when available; otherwise derive it from the
     // current live session. Fall back to the default reconnect timeout so active
@@ -798,11 +1006,20 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
   async stat(path: string): Promise<SandboxStats> {
     // Use stat command to get file info
     // Use tab delimiter to avoid issues with file types containing spaces (e.g., "regular file")
-    const result = await this.session.runCommand({
-      cmd: "stat",
-      args: ["-c", "%F\t%s\t%Y", path],
-      env: this.env,
-    });
+    const result = await runFinishedCommandWithSpan(
+      this.session,
+      {
+        cmd: "stat",
+        args: ["-c", "%F\t%s\t%Y", path],
+        env: this.env,
+      },
+      {
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command.phase": "filesystem",
+        "sandbox.command.operation": "stat",
+      },
+    );
 
     if (result.exitCode !== 0) {
       throw new Error(`ENOENT: no such file or directory, stat '${path}'`);
@@ -824,11 +1041,20 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
   }
 
   async access(path: string): Promise<void> {
-    const result = await this.session.runCommand({
-      cmd: "test",
-      args: ["-e", path],
-      env: this.env,
-    });
+    const result = await runFinishedCommandWithSpan(
+      this.session,
+      {
+        cmd: "test",
+        args: ["-e", path],
+        env: this.env,
+      },
+      {
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command.phase": "filesystem",
+        "sandbox.command.operation": "access",
+      },
+    );
 
     if (result.exitCode !== 0) {
       throw new Error(`ENOENT: no such file or directory, access '${path}'`);
@@ -837,11 +1063,20 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
     const args = options?.recursive ? ["-p", path] : [path];
-    const result = await this.session.runCommand({
-      cmd: "mkdir",
-      args,
-      env: this.env,
-    });
+    const result = await runFinishedCommandWithSpan(
+      this.session,
+      {
+        cmd: "mkdir",
+        args,
+        env: this.env,
+      },
+      {
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command.phase": "filesystem",
+        "sandbox.command.operation": "mkdir",
+      },
+    );
 
     if (result.exitCode !== 0) {
       const stderr = await result.stdout(); // stdout contains error in some cases
@@ -856,11 +1091,23 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     _options: { withFileTypes: true },
   ): Promise<Dirent[]> {
     // List files with type info using find
-    const result = await this.session.runCommand({
-      cmd: "bash",
-      args: ["-c", `find "${path}" -maxdepth 1 -mindepth 1 -printf "%y %f\\n"`],
-      env: this.env,
-    });
+    const result = await runFinishedCommandWithSpan(
+      this.session,
+      {
+        cmd: "bash",
+        args: [
+          "-c",
+          `find "${path}" -maxdepth 1 -mindepth 1 -printf "%y %f\\n"`,
+        ],
+        env: this.env,
+      },
+      {
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command.phase": "filesystem",
+        "sandbox.command.operation": "readdir",
+      },
+    );
 
     if (result.exitCode !== 0) {
       throw new Error(`ENOENT: no such file or directory, scandir '${path}'`);
@@ -902,56 +1149,99 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     timeoutMs: number,
     options?: { signal?: AbortSignal },
   ): Promise<ExecResult> {
-    try {
-      const timeoutSignal = AbortSignal.timeout(timeoutMs);
-      const signal = options?.signal
-        ? AbortSignal.any([timeoutSignal, options.signal])
-        : timeoutSignal;
+    return withSandboxSpan(
+      "sandbox.exec",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command": command,
+        "sandbox.command.cwd": cwd,
+        "sandbox.command.timeout_ms": timeoutMs,
+        "sandbox.command.phase": "agent",
+      },
+      async (span) => {
+        try {
+          const timeoutSignal = AbortSignal.timeout(timeoutMs);
+          const signal = options?.signal
+            ? AbortSignal.any([timeoutSignal, options.signal])
+            : timeoutSignal;
 
-      const result = await this.session.runCommand({
-        cmd: "bash",
-        args: ["-c", `cd "${cwd}" && ${command}`],
-        env: this.getCommandEnv(),
-        signal,
-      });
+          const result = await runFinishedCommandWithSpan(
+            this.session,
+            {
+              cmd: "bash",
+              args: ["-c", `cd "${cwd}" && ${command}`],
+              env: this.getCommandEnv(),
+              signal,
+            },
+            {
+              "sandbox.name": this.name,
+              "sandbox.session_id": this.id,
+              "sandbox.command.phase": "agent",
+            },
+          );
 
-      const [rawStdout, rawStderr] = await Promise.all([
-        result.stdout(),
-        result.stderr(),
-      ]);
-      const stdout = truncateCommandOutput(rawStdout);
-      const stderr = truncateCommandOutput(rawStderr);
+          const [rawStdout, rawStderr] = await Promise.all([
+            result.stdout(),
+            result.stderr(),
+          ]);
+          const stdout = truncateCommandOutput(rawStdout);
+          const stderr = truncateCommandOutput(rawStderr);
 
-      return {
-        success: result.exitCode === 0,
-        exitCode: result.exitCode,
-        stdout: stdout.output,
-        stderr: stderr.output,
-        truncated: stdout.truncated || stderr.truncated,
-      };
-    } catch (error) {
-      if (error instanceof Error && error.name === "TimeoutError") {
-        return {
-          success: false,
-          exitCode: null,
-          stdout: "",
-          stderr: `Command timed out after ${timeoutMs}ms`,
-          truncated: false,
-        };
-      }
+          span.setAttributes({
+            "sandbox.command.exit_code": result.exitCode,
+            "sandbox.command.stdout_bytes": Buffer.byteLength(
+              rawStdout,
+              "utf8",
+            ),
+            "sandbox.command.stderr_bytes": Buffer.byteLength(
+              rawStderr,
+              "utf8",
+            ),
+            "sandbox.command.output_truncated":
+              stdout.truncated || stderr.truncated,
+          });
+          setSpanStatusFromExitCode(span, result.exitCode);
 
-      if (error instanceof Error && error.name === "AbortError") {
-        throw error;
-      }
+          return {
+            success: result.exitCode === 0,
+            exitCode: result.exitCode,
+            stdout: stdout.output,
+            stderr: stderr.output,
+            truncated: stdout.truncated || stderr.truncated,
+          };
+        } catch (error) {
+          if (error instanceof Error && error.name === "TimeoutError") {
+            span.setAttributes({
+              "sandbox.command.exit_code": -1,
+              "sandbox.command.timed_out": true,
+            });
+            setSpanStatusFromExitCode(span, null);
+            return {
+              success: false,
+              exitCode: null,
+              stdout: "",
+              stderr: `Command timed out after ${timeoutMs}ms`,
+              truncated: false,
+            };
+          }
 
-      return {
-        success: false,
-        exitCode: null,
-        stdout: "",
-        stderr: error instanceof Error ? error.message : String(error),
-        truncated: false,
-      };
-    }
+          if (error instanceof Error && error.name === "AbortError") {
+            throw error;
+          }
+
+          recordSpanError(span, error);
+          return {
+            success: false,
+            exitCode: null,
+            stdout: "",
+            stderr: error instanceof Error ? error.message : String(error),
+            truncated: false,
+          };
+        }
+      },
+    );
   }
 
   /**
@@ -962,53 +1252,83 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     command: string,
     cwd: string,
   ): Promise<{ commandId: string }> {
-    const result = await this.session.runCommand({
-      cmd: "bash",
-      args: ["-c", `cd "${cwd}" && ${command}`],
-      env: this.getCommandEnv(),
-      detached: true,
-    });
+    return withSandboxSpan(
+      "sandbox.exec_detached",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+        "sandbox.command": command,
+        "sandbox.command.cwd": cwd,
+        "sandbox.command.detached": true,
+        "sandbox.command.phase": "agent",
+      },
+      async (span) => {
+        const result = await runDetachedCommandWithSpan(
+          this.session,
+          {
+            cmd: "bash",
+            args: ["-c", `cd "${cwd}" && ${command}`],
+            env: this.getCommandEnv(),
+            detached: true,
+          },
+          {
+            "sandbox.name": this.name,
+            "sandbox.session_id": this.id,
+            "sandbox.command.phase": "agent",
+          },
+        );
+        span.setAttribute("sandbox.command.id", result.cmdId);
 
-    const abortController = new AbortController();
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutResult = new Promise<{ kind: "timeout" }>((resolve) => {
-      timeoutId = setTimeout(() => {
-        abortController.abort();
-        resolve({ kind: "timeout" });
-      }, DETACHED_QUICK_FAILURE_WINDOW_MS);
-    });
+        const abortController = new AbortController();
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const timeoutResult = new Promise<{ kind: "timeout" }>((resolve) => {
+          timeoutId = setTimeout(() => {
+            abortController.abort();
+            resolve({ kind: "timeout" });
+          }, DETACHED_QUICK_FAILURE_WINDOW_MS);
+        });
 
-    const waitResult = result
-      .wait({ signal: abortController.signal })
-      .then((finished) => ({ kind: "finished", finished }) as const)
-      .catch((error: unknown) => ({ kind: "error", error }) as const);
+        const waitResult = result
+          .wait({ signal: abortController.signal })
+          .then((finished) => ({ kind: "finished", finished }) as const)
+          .catch((error: unknown) => ({ kind: "error", error }) as const);
 
-    const quickProbe = await Promise.race([waitResult, timeoutResult]);
+        const quickProbe = await Promise.race([waitResult, timeoutResult]);
 
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
 
-    if (quickProbe.kind === "timeout") {
-      return { commandId: result.cmdId };
-    }
+        if (quickProbe.kind === "timeout") {
+          setSpanStatusFromExitCode(span, 0);
+          return { commandId: result.cmdId };
+        }
 
-    if (quickProbe.kind === "error") {
-      throw quickProbe.error;
-    }
+        if (quickProbe.kind === "error") {
+          throw quickProbe.error;
+        }
 
-    if (quickProbe.finished.exitCode !== 0) {
-      const stderr = await quickProbe.finished.stderr();
-      const trimmedStderr = stderr.trim();
-      const stderrSnippet = trimmedStderr
-        ? trimmedStderr.slice(0, MAX_OUTPUT_LENGTH)
-        : "<no stderr>";
-      throw new Error(
-        `Background command exited with code ${quickProbe.finished.exitCode}. stderr:\n${stderrSnippet}`,
-      );
-    }
+        span.setAttribute(
+          "sandbox.command.exit_code",
+          quickProbe.finished.exitCode,
+        );
+        setSpanStatusFromExitCode(span, quickProbe.finished.exitCode);
 
-    return { commandId: result.cmdId };
+        if (quickProbe.finished.exitCode !== 0) {
+          const stderr = await quickProbe.finished.stderr();
+          const trimmedStderr = stderr.trim();
+          const stderrSnippet = trimmedStderr
+            ? trimmedStderr.slice(0, MAX_OUTPUT_LENGTH)
+            : "<no stderr>";
+          throw new Error(
+            `Background command exited with code ${quickProbe.finished.exitCode}. stderr:\n${stderrSnippet}`,
+          );
+        }
+
+        return { commandId: result.cmdId };
+      },
+    );
   }
 
   /**
@@ -1027,22 +1347,33 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
    * IMPORTANT: This automatically stops the sandbox after snapshot creation.
    */
   async snapshot(): Promise<SnapshotResult> {
-    // Use the current session snapshot method to avoid implicitly resuming stopped sandboxes.
-    const snapshot = await this.session.snapshot();
+    return withSandboxSpan(
+      "sandbox.snapshot",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+      },
+      async (span) => {
+        // Use the current session snapshot method to avoid implicitly resuming stopped sandboxes.
+        const snapshot = await this.session.snapshot();
+        span.setAttribute("sandbox.snapshot_id", snapshot.snapshotId);
 
-    // Mark sandbox as stopped since native snapshot stops it automatically
-    this.isStopped = true;
-    this._expiresAt = undefined;
+        // Mark sandbox as stopped since native snapshot stops it automatically
+        this.isStopped = true;
+        this._expiresAt = undefined;
 
-    // Clear proactive timeout timer
-    if (this.timeoutTimer) {
-      clearTimeout(this.timeoutTimer);
-      this.timeoutTimer = undefined;
-    }
+        // Clear proactive timeout timer
+        if (this.timeoutTimer) {
+          clearTimeout(this.timeoutTimer);
+          this.timeoutTimer = undefined;
+        }
 
-    return {
-      snapshotId: snapshot.snapshotId,
-    };
+        return {
+          snapshotId: snapshot.snapshotId,
+        };
+      },
+    );
   }
 
   /**
@@ -1051,30 +1382,40 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
    * This method is idempotent - calling it multiple times is safe.
    */
   async stop(): Promise<void> {
-    // Ensure stop() only runs once
-    if (this.isStopped) return;
-    this.isStopped = true;
-    this._expiresAt = undefined;
+    await withSandboxSpan(
+      "sandbox.stop",
+      {
+        "sandbox.provider": "vercel",
+        "sandbox.name": this.name,
+        "sandbox.session_id": this.id,
+      },
+      async () => {
+        // Ensure stop() only runs once
+        if (this.isStopped) return;
+        this.isStopped = true;
+        this._expiresAt = undefined;
 
-    // Clear proactive timeout timer
-    if (this.timeoutTimer) {
-      clearTimeout(this.timeoutTimer);
-      this.timeoutTimer = undefined;
-    }
+        // Clear proactive timeout timer
+        if (this.timeoutTimer) {
+          clearTimeout(this.timeoutTimer);
+          this.timeoutTimer = undefined;
+        }
 
-    // Run beforeStop hook
-    if (this.hooks?.beforeStop) {
-      try {
-        await this.hooks.beforeStop(this);
-      } catch (error) {
-        console.error(
-          "[VercelSandbox] beforeStop hook failed:",
-          error instanceof Error ? error.message : error,
-        );
-      }
-    }
+        // Run beforeStop hook
+        if (this.hooks?.beforeStop) {
+          try {
+            await this.hooks.beforeStop(this);
+          } catch (error) {
+            console.error(
+              "[VercelSandbox] beforeStop hook failed:",
+              error instanceof Error ? error.message : error,
+            );
+          }
+        }
 
-    await this.sdk.stop();
+        await this.sdk.stop();
+      },
+    );
   }
 
   /**

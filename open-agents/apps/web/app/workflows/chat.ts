@@ -49,6 +49,12 @@ import {
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import {
+  compactSpanAttributes,
+  getEmailDomain,
+  withRawTreeSpan,
+  type RawTreeSpanAttributes,
+} from "@/lib/rawtree/tracing";
 import type { Session as AuthSession } from "@/lib/session/types";
 import type {
   WorkflowRunStatus,
@@ -273,6 +279,34 @@ function withModelMetadata(
     ...metadata,
     selectedModelId,
     modelId,
+  };
+}
+
+function buildAgentTraceAttributes(params: {
+  chatId: string;
+  email?: string;
+  modelId: string;
+  repoName?: string;
+  repoOwner?: string;
+  selectedModelId: string;
+  sessionId: string;
+  stepNumber: number;
+  userId: string;
+  username?: string;
+  workflowRunId: string;
+}): RawTreeSpanAttributes {
+  return {
+    "agent.step_number": params.stepNumber,
+    "chat.id": params.chatId,
+    "model.id": params.modelId,
+    "model.selected_id": params.selectedModelId,
+    "repo.name": params.repoName,
+    "repo.owner": params.repoOwner,
+    "session.id": params.sessionId,
+    "user.email_domain": getEmailDomain(params.email),
+    "user.id": params.userId,
+    "user.username": params.username,
+    "workflow.run_id": params.workflowRunId,
   };
 }
 
@@ -740,6 +774,13 @@ export async function runAgentWorkflow(options: Options) {
           modelId,
           agentOptions,
           step + 1,
+          {
+            email: options.authSession?.user.email,
+            repoName: runtime.repoName,
+            repoOwner: runtime.repoOwner,
+            userId: options.userId,
+            username: options.authSession?.user.username,
+          },
         );
       } catch (error) {
         if (isStepTimingError(error)) {
@@ -1010,259 +1051,290 @@ const runAgentStep = async (
   modelId: string,
   agentOptions: OpenAgentCallOptions,
   stepNumber: number,
+  telemetryContext: {
+    email?: string;
+    repoName?: string;
+    repoOwner?: string;
+    userId: string;
+    username?: string;
+  },
 ) => {
   "use step";
 
-  const stepStartedAt = new Date();
-  const { webAgent } = await import("@/app/config");
+  const traceAttributes = buildAgentTraceAttributes({
+    chatId,
+    email: telemetryContext.email,
+    modelId,
+    repoName: telemetryContext.repoName,
+    repoOwner: telemetryContext.repoOwner,
+    selectedModelId,
+    sessionId,
+    stepNumber,
+    userId: telemetryContext.userId,
+    username: telemetryContext.username,
+    workflowRunId,
+  });
 
-  const abortController = new AbortController();
-  const stopMonitor = startStopMonitor(workflowRunId, abortController);
+  return withRawTreeSpan(
+    "open-agents.agent.step",
+    traceAttributes,
+    async () => {
+      const stepStartedAt = new Date();
+      const { webAgent } = await import("@/app/config");
+      const stepAgentOptions: OpenAgentCallOptions = {
+        ...agentOptions,
+        telemetryMetadata: compactSpanAttributes(traceAttributes),
+      };
 
-  try {
-    let responseMessage: WebAgentUIMessage | undefined;
-    let lastStepUsage: LanguageModelUsage | undefined;
-    let lastStepCost: number | undefined;
-    const lastOriginalMessage = originalMessages.at(-1);
-    const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
-      lastOriginalMessage?.role === "assistant"
-        ? [...(lastOriginalMessage.metadata?.stepFinishReasons ?? [])]
-        : [];
-    const existingTotalMessageUsage =
-      lastOriginalMessage?.role === "assistant"
-        ? lastOriginalMessage.metadata?.totalMessageUsage
-        : undefined;
-    const existingTotalMessageCost =
-      lastOriginalMessage?.role === "assistant"
-        ? lastOriginalMessage.metadata?.totalMessageCost
-        : undefined;
-    let stepFinishReasons = existingStepFinishReasons;
-    let totalMessageUsage = existingTotalMessageUsage;
-    let totalMessageCost = existingTotalMessageCost;
+      const abortController = new AbortController();
+      const stopMonitor = startStopMonitor(workflowRunId, abortController);
 
-    const result = await webAgent.stream({
-      messages,
-      options: agentOptions,
-      abortSignal: abortController.signal,
-    });
+      try {
+        let responseMessage: WebAgentUIMessage | undefined;
+        let lastStepUsage: LanguageModelUsage | undefined;
+        let lastStepCost: number | undefined;
+        const lastOriginalMessage = originalMessages.at(-1);
+        const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
+          lastOriginalMessage?.role === "assistant"
+            ? [...(lastOriginalMessage.metadata?.stepFinishReasons ?? [])]
+            : [];
+        const existingTotalMessageUsage =
+          lastOriginalMessage?.role === "assistant"
+            ? lastOriginalMessage.metadata?.totalMessageUsage
+            : undefined;
+        const existingTotalMessageCost =
+          lastOriginalMessage?.role === "assistant"
+            ? lastOriginalMessage.metadata?.totalMessageCost
+            : undefined;
+        let stepFinishReasons = existingStepFinishReasons;
+        let totalMessageUsage = existingTotalMessageUsage;
+        let totalMessageCost = existingTotalMessageCost;
 
-    for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
-      originalMessages,
-      generateMessageId: () => messageId,
-      sendStart: false,
-      sendFinish: false,
-      messageMetadata: ({ part: streamPart }) => {
-        if (streamPart.type === "finish-step") {
-          lastStepUsage = streamPart.usage;
-          if (streamPart.usage) {
-            totalMessageUsage = totalMessageUsage
-              ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
-              : streamPart.usage;
-          }
-          const stepCost = extractGatewayCost(streamPart.providerMetadata);
-          if (stepCost !== undefined) {
-            lastStepCost = stepCost;
-            totalMessageCost = (totalMessageCost ?? 0) + stepCost;
-          }
-          stepFinishReasons = [
-            ...stepFinishReasons,
-            {
-              finishReason: streamPart.finishReason,
-              rawFinishReason: streamPart.rawFinishReason,
-            },
-          ];
-          return {
+        const result = await webAgent.stream({
+          messages,
+          options: stepAgentOptions,
+          abortSignal: abortController.signal,
+        });
+
+        for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
+          originalMessages,
+          generateMessageId: () => messageId,
+          sendStart: false,
+          sendFinish: false,
+          messageMetadata: ({ part: streamPart }) => {
+            if (streamPart.type === "finish-step") {
+              lastStepUsage = streamPart.usage;
+              if (streamPart.usage) {
+                totalMessageUsage = totalMessageUsage
+                  ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
+                  : streamPart.usage;
+              }
+              const stepCost = extractGatewayCost(streamPart.providerMetadata);
+              if (stepCost !== undefined) {
+                lastStepCost = stepCost;
+                totalMessageCost = (totalMessageCost ?? 0) + stepCost;
+              }
+              stepFinishReasons = [
+                ...stepFinishReasons,
+                {
+                  finishReason: streamPart.finishReason,
+                  rawFinishReason: streamPart.rawFinishReason,
+                },
+              ];
+              return {
+                selectedModelId,
+                modelId,
+                lastStepUsage,
+                totalMessageUsage,
+                lastStepCost,
+                totalMessageCost,
+                lastStepFinishReason: streamPart.finishReason,
+                lastStepRawFinishReason: streamPart.rawFinishReason,
+                stepFinishReasons,
+              } satisfies WebAgentMessageMetadata;
+            }
+            return undefined;
+          },
+          onFinish: ({ responseMessage: finishedResponseMessage }) => {
+            responseMessage = finishedResponseMessage;
+          },
+        })) {
+          const writer = writable.getWriter();
+          await writer.write(part);
+          writer.releaseLock();
+        }
+
+        if (responseMessage == null) {
+          throw new Error("Agent stream finished without a response message");
+        }
+
+        responseMessage = {
+          ...responseMessage,
+          metadata: withModelMetadata(
+            responseMessage.metadata,
             selectedModelId,
             modelId,
-            lastStepUsage,
-            totalMessageUsage,
-            lastStepCost,
-            totalMessageCost,
-            lastStepFinishReason: streamPart.finishReason,
-            lastStepRawFinishReason: streamPart.rawFinishReason,
-            stepFinishReasons,
-          } satisfies WebAgentMessageMetadata;
+          ),
+        };
+
+        const [stepUsage, finishReason, rawFinishReason, response, steps] =
+          await Promise.all([
+            result.totalUsage,
+            result.finishReason,
+            result.rawFinishReason,
+            result.response,
+            result.steps,
+          ]);
+
+        if (stepUsage) {
+          responseMessage = {
+            ...responseMessage,
+            metadata: {
+              ...responseMessage.metadata,
+              totalMessageUsage: existingTotalMessageUsage
+                ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
+                : stepUsage,
+            },
+          };
         }
-        return undefined;
-      },
-      onFinish: ({ responseMessage: finishedResponseMessage }) => {
-        responseMessage = finishedResponseMessage;
-      },
-    })) {
-      const writer = writable.getWriter();
-      await writer.write(part);
-      writer.releaseLock();
-    }
 
-    if (responseMessage == null) {
-      throw new Error("Agent stream finished without a response message");
-    }
+        const stepsCost = steps.reduce<number | undefined>((sum, step) => {
+          const cost = extractGatewayCost(step.providerMetadata);
+          if (cost === undefined) {
+            return sum;
+          }
+          return (sum ?? 0) + cost;
+        }, undefined);
 
-    responseMessage = {
-      ...responseMessage,
-      metadata: withModelMetadata(
-        responseMessage.metadata,
-        selectedModelId,
-        modelId,
-      ),
-    };
+        if (stepsCost !== undefined) {
+          const carriedCost = (existingTotalMessageCost ?? 0) + stepsCost;
+          responseMessage = {
+            ...responseMessage,
+            metadata: {
+              ...responseMessage.metadata,
+              lastStepCost,
+              totalMessageCost: carriedCost,
+            },
+          };
+        }
 
-    const [stepUsage, finishReason, rawFinishReason, response, steps] =
-      await Promise.all([
-        result.totalUsage,
-        result.finishReason,
-        result.rawFinishReason,
-        result.response,
-        result.steps,
-      ]);
+        if (finishReason === "other") {
+          const stepDiagnostics = steps.map((step) => ({
+            stepNumber: step.stepNumber,
+            model: step.model,
+            finishReason: step.finishReason,
+            rawFinishReason: step.rawFinishReason,
+            usage: step.usage,
+            warnings: step.warnings,
+            contentTypes: step.content.map((contentPart) => contentPart.type),
+            toolCalls: step.toolCalls.map((toolCall) =>
+              compactRecord({
+                toolName: toolCall.toolName,
+                dynamic: toolCall.dynamic,
+                invalid: "invalid" in toolCall ? toolCall.invalid : undefined,
+                providerExecuted: toolCall.providerExecuted,
+              }),
+            ),
+            toolResults: step.toolResults.map((toolResult) =>
+              compactRecord({
+                toolName: toolResult.toolName,
+                dynamic: toolResult.dynamic,
+                preliminary: toolResult.preliminary,
+                providerExecuted: toolResult.providerExecuted,
+              }),
+            ),
+            request: compactRecord({
+              body: summarizeRequestBody(step.request.body),
+            }),
+            response: compactRecord({
+              id: step.response.id,
+              modelId: step.response.modelId,
+              timestamp: step.response.timestamp.toISOString(),
+              headers: step.response.headers,
+              body: summarizeResponseBody(step.response.body),
+              messageCount: step.response.messages.length,
+            }),
+            providerMetadata: step.providerMetadata,
+          }));
 
-    if (stepUsage) {
-      responseMessage = {
-        ...responseMessage,
-        metadata: {
-          ...responseMessage.metadata,
-          totalMessageUsage: existingTotalMessageUsage
-            ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
-            : stepUsage,
-        },
-      };
-    }
+          const debugPayload = stringifyDebugPayload({
+            workflowRunId,
+            chatId,
+            sessionId,
+            messageId,
+            selectedModelId,
+            modelId,
+            finishReason,
+            rawFinishReason,
+            stepUsage,
+            response,
+            responseMessage,
+            stepDiagnostics,
+          });
 
-    const stepsCost = steps.reduce<number | undefined>((sum, step) => {
-      const cost = extractGatewayCost(step.providerMetadata);
-      if (cost === undefined) {
-        return sum;
+          console.warn(
+            `[workflow] Agent step finished with reason 'other':\n${debugPayload}`,
+          );
+        }
+
+        const stepFinishedAt = new Date();
+
+        return {
+          responseMessage,
+          responseMessages: response.messages,
+          finishReason,
+          rawFinishReason,
+          stepUsage,
+          stepCost: stepsCost,
+          stepWasAborted: false,
+          stepTiming: buildStepTiming(
+            stepNumber,
+            stepStartedAt,
+            stepFinishedAt,
+            finishReason,
+            rawFinishReason,
+          ),
+        };
+      } catch (error) {
+        const stepFinishedAt = new Date();
+
+        if (isAbortError(error)) {
+          const abortedFinishReason: FinishReason = "stop";
+          return {
+            responseMessage: undefined,
+            responseMessages: [],
+            finishReason: abortedFinishReason,
+            rawFinishReason: undefined,
+            stepUsage: undefined,
+            stepCost: undefined,
+            stepWasAborted: true,
+            stepTiming: buildStepTiming(
+              stepNumber,
+              stepStartedAt,
+              stepFinishedAt,
+              abortedFinishReason,
+            ),
+          };
+        }
+
+        const errorWithStepTiming =
+          error instanceof Error ? error : new Error(String(error));
+        Object.assign(errorWithStepTiming, {
+          stepTiming: buildStepTiming(
+            stepNumber,
+            stepStartedAt,
+            stepFinishedAt,
+            "error",
+            errorWithStepTiming.name,
+          ),
+        });
+        throw errorWithStepTiming;
+      } finally {
+        stopMonitor.stop();
+        await stopMonitor.done;
       }
-      return (sum ?? 0) + cost;
-    }, undefined);
-
-    if (stepsCost !== undefined) {
-      const carriedCost = (existingTotalMessageCost ?? 0) + stepsCost;
-      responseMessage = {
-        ...responseMessage,
-        metadata: {
-          ...responseMessage.metadata,
-          lastStepCost,
-          totalMessageCost: carriedCost,
-        },
-      };
-    }
-
-    if (finishReason === "other") {
-      const stepDiagnostics = steps.map((step) => ({
-        stepNumber: step.stepNumber,
-        model: step.model,
-        finishReason: step.finishReason,
-        rawFinishReason: step.rawFinishReason,
-        usage: step.usage,
-        warnings: step.warnings,
-        contentTypes: step.content.map((contentPart) => contentPart.type),
-        toolCalls: step.toolCalls.map((toolCall) =>
-          compactRecord({
-            toolName: toolCall.toolName,
-            dynamic: toolCall.dynamic,
-            invalid: "invalid" in toolCall ? toolCall.invalid : undefined,
-            providerExecuted: toolCall.providerExecuted,
-          }),
-        ),
-        toolResults: step.toolResults.map((toolResult) =>
-          compactRecord({
-            toolName: toolResult.toolName,
-            dynamic: toolResult.dynamic,
-            preliminary: toolResult.preliminary,
-            providerExecuted: toolResult.providerExecuted,
-          }),
-        ),
-        request: compactRecord({
-          body: summarizeRequestBody(step.request.body),
-        }),
-        response: compactRecord({
-          id: step.response.id,
-          modelId: step.response.modelId,
-          timestamp: step.response.timestamp.toISOString(),
-          headers: step.response.headers,
-          body: summarizeResponseBody(step.response.body),
-          messageCount: step.response.messages.length,
-        }),
-        providerMetadata: step.providerMetadata,
-      }));
-
-      const debugPayload = stringifyDebugPayload({
-        workflowRunId,
-        chatId,
-        sessionId,
-        messageId,
-        selectedModelId,
-        modelId,
-        finishReason,
-        rawFinishReason,
-        stepUsage,
-        response,
-        responseMessage,
-        stepDiagnostics,
-      });
-
-      console.warn(
-        `[workflow] Agent step finished with reason 'other':\n${debugPayload}`,
-      );
-    }
-
-    const stepFinishedAt = new Date();
-
-    return {
-      responseMessage,
-      responseMessages: response.messages,
-      finishReason,
-      rawFinishReason,
-      stepUsage,
-      stepCost: stepsCost,
-      stepWasAborted: false,
-      stepTiming: buildStepTiming(
-        stepNumber,
-        stepStartedAt,
-        stepFinishedAt,
-        finishReason,
-        rawFinishReason,
-      ),
-    };
-  } catch (error) {
-    const stepFinishedAt = new Date();
-
-    if (isAbortError(error)) {
-      const abortedFinishReason: FinishReason = "stop";
-      return {
-        responseMessage: undefined,
-        responseMessages: [],
-        finishReason: abortedFinishReason,
-        rawFinishReason: undefined,
-        stepUsage: undefined,
-        stepCost: undefined,
-        stepWasAborted: true,
-        stepTiming: buildStepTiming(
-          stepNumber,
-          stepStartedAt,
-          stepFinishedAt,
-          abortedFinishReason,
-        ),
-      };
-    }
-
-    const errorWithStepTiming =
-      error instanceof Error ? error : new Error(String(error));
-    Object.assign(errorWithStepTiming, {
-      stepTiming: buildStepTiming(
-        stepNumber,
-        stepStartedAt,
-        stepFinishedAt,
-        "error",
-        errorWithStepTiming.name,
-      ),
-    });
-    throw errorWithStepTiming;
-  } finally {
-    stopMonitor.stop();
-    await stopMonitor.done;
-  }
+    },
+  );
 };
 
 function startStopMonitor(runId: string, abortController: AbortController) {

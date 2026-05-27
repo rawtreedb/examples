@@ -103,20 +103,22 @@ describe("RawTree usage storage", () => {
     const { getRawTreeUsageHistory } = await usageModulePromise;
     queryRawTreeMock.mockImplementationOnce(async (sql: string) => {
       expect(sql).toContain("FROM `open_agents_usage_events`");
-      expect(sql).toContain("userId = 'user-''1'");
-      expect(sql).toContain("substring(toString(createdAt), 1, 10)");
+      expect(sql).toContain("dynamicElement(userId, 'String') = 'user-''1'");
+      expect(sql).toContain(
+        "substring(dynamicElement(createdAt, 'String'), 1, 10)",
+      );
       expect(sql).not.toContain("__raw_data");
       return [
         {
-          agentType: "subagent",
+          agentTypeValue: "subagent",
           cachedInputTokens: "2",
           date: "2026-05-26",
           inputTokens: "10",
           messageCount: "0",
-          modelId: "openai/gpt-5.4-mini",
+          modelIdValue: "openai/gpt-5.4-mini",
           outputTokens: "20",
-          provider: "openai",
-          source: "web",
+          providerValue: "openai",
+          sourceValue: "web",
           toolCallCount: "3",
         },
       ];
@@ -142,6 +144,97 @@ describe("RawTree usage storage", () => {
     ]);
   });
 
+  test("queries organization users from direct RawTree fields", async () => {
+    const { getRawTreeOrganizationUsageUsers } = await usageModulePromise;
+    queryRawTreeMock.mockImplementationOnce(async (sql: string) => {
+      expect(sql).toContain("FROM `open_agents_usage_events`");
+      expect(sql).toContain(
+        "dynamicElement(emailDomain, 'String') = 'tinybird.co'",
+      );
+      expect(sql).toContain(
+        "coalesce(any(dynamicElement(username, 'String')), userIdValue) AS usernameValue",
+      );
+      expect(sql).toContain(
+        "sum(coalesce(dynamicElement(inputTokens, 'Float64'), toFloat64(dynamicElement(inputTokens, 'Int64')), toFloat64(dynamicElement(inputTokens, 'UInt64')), 0) + coalesce(dynamicElement(outputTokens, 'Float64'), toFloat64(dynamicElement(outputTokens, 'Int64')), toFloat64(dynamicElement(outputTokens, 'UInt64')), 0)) AS totalTokens",
+      );
+      expect(sql).not.toContain("__raw_data");
+      return [
+        {
+          avatarUrlValue: null,
+          lastSeenAtValue: "2026-05-26T10:00:00.000Z",
+          messageCount: "2",
+          nameValue: "Rafa",
+          totalTokens: "30",
+          userIdValue: "user-1",
+          usernameValue: null,
+        },
+      ];
+    });
+
+    const rows = await getRawTreeOrganizationUsageUsers("tinybird.co");
+
+    expect(rows).toEqual([
+      {
+        avatarUrl: null,
+        lastSeenAt: "2026-05-26T10:00:00.000Z",
+        messageCount: 2,
+        name: "Rafa",
+        totalTokens: 30,
+        userId: "user-1",
+        username: "user-1",
+      },
+    ]);
+  });
+
+  test("queries organization usage days with optional user filters", async () => {
+    const { getRawTreeOrganizationUsageDays } = await usageModulePromise;
+    queryRawTreeMock.mockImplementationOnce(async (sql: string) => {
+      expect(sql).toContain("FROM `open_agents_usage_events`");
+      expect(sql).toContain(
+        "dynamicElement(emailDomain, 'String') = 'tinybird.co'",
+      );
+      expect(sql).toContain(
+        "substring(dynamicElement(createdAt, 'String'), 1, 10) >= '2026-05-01'",
+      );
+      expect(sql).toContain(
+        "substring(dynamicElement(createdAt, 'String'), 1, 10) <= '2026-05-31'",
+      );
+      expect(sql).toContain(
+        "dynamicElement(userId, 'String') IN ('user-1', 'user-''2')",
+      );
+      expect(sql).toContain(
+        "sum(coalesce(dynamicElement(toolCallCount, 'Float64'), toFloat64(dynamicElement(toolCallCount, 'Int64')), toFloat64(dynamicElement(toolCallCount, 'UInt64')), 0)) AS toolCallCount",
+      );
+      expect(sql).not.toContain("__raw_data");
+      return [
+        {
+          cachedInputTokens: "1",
+          date: "2026-05-26",
+          inputTokens: "10",
+          messageCount: "3",
+          outputTokens: "20",
+          toolCallCount: "4",
+        },
+      ];
+    });
+
+    const rows = await getRawTreeOrganizationUsageDays("tinybird.co", {
+      range: { from: "2026-05-01", to: "2026-05-31" },
+      userIds: ["user-1", "user-'2", "user-1", ""],
+    });
+
+    expect(rows).toEqual([
+      {
+        cachedInputTokens: 1,
+        date: "2026-05-26",
+        inputTokens: 10,
+        messageCount: 3,
+        outputTokens: 20,
+        toolCallCount: 4,
+      },
+    ]);
+  });
+
   test("returns null when the RawTree table has not been created", async () => {
     const { getRawTreeUsageHistory } = await usageModulePromise;
     queryRawTreeMock.mockImplementationOnce(async () => {
@@ -149,5 +242,25 @@ describe("RawTree usage storage", () => {
     });
 
     await expect(getRawTreeUsageHistory("user-1")).resolves.toBeNull();
+  });
+
+  test("returns null for organization analytics when the RawTree table is missing", async () => {
+    const {
+      getRawTreeOrganizationUsageDays,
+      getRawTreeOrganizationUsageUsers,
+    } = await usageModulePromise;
+    queryRawTreeMock.mockImplementationOnce(async () => {
+      throw missingTableError;
+    });
+    queryRawTreeMock.mockImplementationOnce(async () => {
+      throw missingTableError;
+    });
+
+    await expect(
+      getRawTreeOrganizationUsageUsers("tinybird.co"),
+    ).resolves.toBeNull();
+    await expect(
+      getRawTreeOrganizationUsageDays("tinybird.co"),
+    ).resolves.toBeNull();
   });
 });
