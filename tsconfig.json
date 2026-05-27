@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["sandboxes/**/*.ts", "examples/**/*.ts", "lib/**/*.ts"]
+  "include": ["sandboxes/**/*.ts", "otel/**/*.ts", "lib/**/*.ts"]
 }

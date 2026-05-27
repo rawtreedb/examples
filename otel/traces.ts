@@ -17,7 +17,7 @@ import { RawTree } from "@rawtree/sdk";
 import {
   printTraceTimeline,
   type TraceTimelineRow,
-} from "../../lib/trace-timeline.js";
+} from "../lib/trace-timeline.js";
 
 type SpanAttributeInput = Record<string, AttributeValue | undefined>;
 

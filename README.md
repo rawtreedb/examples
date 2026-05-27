@@ -17,7 +17,7 @@ The demo uses:
 - `@rawtree/sdk` to query the ingested trace rows after the run
 - A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
-### `examples/otel/logs.ts`
+### `otel/logs.ts`
 
 Node.js OpenTelemetry logs example adapted from PostHog's OTLP logs setup to
 RawTree. It sends log records to a RawTree table using the `otlp-logs`
@@ -29,7 +29,7 @@ The RawTree OTLP logs endpoint is:
 https://api.rawtree.com/v1/tables/otel_node_logs?transform=otlp-logs
 ```
 
-### `examples/otel/traces.ts`
+### `otel/traces.ts`
 
 Node.js OpenTelemetry traces example for RawTree. It creates a small parent-child
 span tree, exports it to RawTree with the `otlp-traces` transform, then queries
