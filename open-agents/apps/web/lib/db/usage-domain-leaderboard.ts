@@ -1,4 +1,3 @@
-import { eq, sql } from "drizzle-orm";
 import type { UsageDateRange } from "@/lib/usage/date-range";
 import { getRawTreeUsageDomainLeaderboardRows } from "@/lib/rawtree/usage";
 import { getUsageLeaderboardDomain } from "@/lib/usage/leaderboard-domain";
@@ -6,8 +5,6 @@ import type {
   UsageDomainLeaderboard,
   UsageDomainLeaderboardRow,
 } from "@/lib/usage/types";
-import { db } from "./client";
-import { usageEvents, users } from "./schema";
 
 export { getUsageLeaderboardDomain };
 
@@ -25,21 +22,6 @@ export interface UsageDomainLeaderboardQueryRow {
 export interface UsageDomainLeaderboardOptions {
   days?: number;
   range?: UsageDateRange;
-}
-
-function buildUsageDomainLeaderboardWhereClause(
-  domain: string,
-  options?: UsageDomainLeaderboardOptions,
-) {
-  if (options?.range) {
-    return sql`${users.email} is not null and lower(split_part(${users.email}, '@', 2)) = ${domain} and date(${usageEvents.createdAt}) >= ${options.range.from} and date(${usageEvents.createdAt}) <= ${options.range.to}`;
-  }
-
-  const days = options?.days ?? 280;
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  return sql`${users.email} is not null and lower(split_part(${users.email}, '@', 2)) = ${domain} and ${usageEvents.createdAt} >= ${since.toISOString()}`;
 }
 
 function shouldReplaceMostUsedModel(params: {
@@ -139,43 +121,7 @@ export async function getUsageDomainLeaderboard(
     return null;
   }
 
-  try {
-    const rawTreeRows = await getRawTreeUsageDomainLeaderboardRows(
-      domain,
-      options,
-    );
-    if (rawTreeRows) {
-      return {
-        domain,
-        rows: buildUsageDomainLeaderboardRows(rawTreeRows),
-      };
-    }
-  } catch (error) {
-    console.error("Failed to read RawTree usage leaderboard:", error);
-  }
-
-  const rows = await db
-    .select({
-      userId: users.id,
-      email: users.email,
-      username: users.username,
-      name: users.name,
-      avatarUrl: users.avatarUrl,
-      modelId: usageEvents.modelId,
-      totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
-      totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
-    })
-    .from(usageEvents)
-    .innerJoin(users, eq(usageEvents.userId, users.id))
-    .where(buildUsageDomainLeaderboardWhereClause(domain, options))
-    .groupBy(
-      users.id,
-      users.email,
-      users.username,
-      users.name,
-      users.avatarUrl,
-      usageEvents.modelId,
-    );
+  const rows = await getRawTreeUsageDomainLeaderboardRows(domain, options);
 
   return {
     domain,

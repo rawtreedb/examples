@@ -82,7 +82,6 @@ interface OrganizationSessionTrace {
 
 interface OrganizationAnalytics {
   domain: string;
-  rawTreeAvailable: boolean;
   repositories: OrganizationRepositoryInsight[];
   sandboxTraces: OrganizationSessionTrace[];
   selectedUserIds: string[];
@@ -589,31 +588,6 @@ export function AnalyticsSection() {
           </p>
         </CardContent>
       </Card>
-    );
-  }
-
-  if (!organization.rawTreeAvailable) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Organization analytics</CardTitle>
-            <CardDescription>@{organization.domain}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              RawTree usage data is not available yet.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <LeaderboardSection />
-          </CardContent>
-        </Card>
-        <RepositoryEditsSection repositories={activeRepositories} />
-        <SessionTracesSection traces={activeSessionTraces} />
-      </div>
     );
   }
 

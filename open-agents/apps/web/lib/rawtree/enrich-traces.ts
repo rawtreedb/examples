@@ -31,12 +31,8 @@ function getTraceSessionIdCandidates(
 
 export async function enrichSandboxTracesWithSessionMetadata(
   domain: string,
-  traces: RawTreeSandboxTraceSummary[] | null,
-): Promise<RawTreeSandboxTraceSummary[] | null> {
-  if (!traces) {
-    return null;
-  }
-
+  traces: RawTreeSandboxTraceSummary[],
+): Promise<RawTreeSandboxTraceSummary[]> {
   const metadataBySessionId = await getSessionTraceMetadataByIds(
     traces.flatMap(getTraceSessionIdCandidates),
     domain,

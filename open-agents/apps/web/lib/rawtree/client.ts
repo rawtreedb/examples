@@ -1,13 +1,9 @@
-import { RawTree, RawTreeError, type JsonObject } from "@rawtree/sdk";
+import { RawTree, type JsonObject } from "@rawtree/sdk";
 
 export type RawTreeJsonObject = JsonObject;
 
 let rawtreeClient: RawTree | null = null;
 let rawtreeClientApiKey: string | null = null;
-
-export function isRawTreeConfigured(): boolean {
-  return Boolean(process.env.RAWTREE_API_KEY);
-}
 
 export async function insertRawTreeRows<Row extends RawTreeJsonObject>(
   tableName: string,
@@ -19,21 +15,6 @@ export async function insertRawTreeRows<Row extends RawTreeJsonObject>(
 export async function queryRawTree<Row>(sql: string): Promise<Row[]> {
   const response = await getRawTreeClient().query<Row>(sql);
   return response.data;
-}
-
-export function isMissingRawTreeTableError(error: unknown): boolean {
-  if (!(error instanceof RawTreeError)) {
-    return false;
-  }
-
-  const detail = [error.message, error.error, error.hint]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return (
-    error.status === 400 && detail.includes("table") && detail.includes("name")
-  );
 }
 
 export function sqlIdentifier(value: string): string {
@@ -51,7 +32,7 @@ export function sqlStringLiteral(value: string): string {
 function getRawTreeApiKey(): string {
   const apiKey = process.env.RAWTREE_API_KEY;
   if (!apiKey) {
-    throw new Error("Set RAWTREE_API_KEY to use RawTree usage storage.");
+    throw new Error("Set RAWTREE_API_KEY to use RawTree.");
   }
 
   return apiKey;

@@ -63,7 +63,6 @@ interface OrganizationTraceSpan {
 
 interface OrganizationTracing {
   domain: string;
-  rawTreeAvailable: boolean;
   selectedUserIds: string[];
   source: "rawtree";
   traces: OrganizationSessionTrace[];
@@ -620,14 +619,6 @@ export function TracingSection({ traceId }: { traceId: string | null }) {
     return (
       <div className="rounded-md border border-border/50 bg-muted/10 p-4 text-sm text-muted-foreground">
         Tracing is available for verified organization email domains.
-      </div>
-    );
-  }
-
-  if (!organization.rawTreeAvailable) {
-    return (
-      <div className="rounded-md border border-border/50 bg-muted/10 p-4 text-sm text-muted-foreground">
-        RawTree tracing data is not available yet.
       </div>
     );
   }

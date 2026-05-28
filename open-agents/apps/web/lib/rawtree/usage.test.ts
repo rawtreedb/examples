@@ -1,14 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const missingTableError = new Error("RawTree table is missing");
 const insertRawTreeRowsMock = mock(async () => undefined);
 const queryRawTreeMock = mock(async (_sql: string): Promise<unknown[]> => []);
-let rawTreeConfigured = true;
 
 mock.module("./client", () => ({
   insertRawTreeRows: insertRawTreeRowsMock,
-  isMissingRawTreeTableError: (error: unknown) => error === missingTableError,
-  isRawTreeConfigured: () => rawTreeConfigured,
   queryRawTree: queryRawTreeMock,
   sqlIdentifier: (value: string) => `\`${value}\``,
   sqlStringLiteral: (value: string) => `'${value.replaceAll("'", "''")}'`,
@@ -17,7 +13,6 @@ mock.module("./client", () => ({
 const usageModulePromise = import("./usage");
 
 beforeEach(() => {
-  rawTreeConfigured = true;
   insertRawTreeRowsMock.mockClear();
   queryRawTreeMock.mockClear();
   insertRawTreeRowsMock.mockImplementation(async () => undefined);
@@ -73,30 +68,6 @@ describe("RawTree usage storage", () => {
         username: "rafa",
       },
     );
-  });
-
-  test("does not write when RawTree is not configured", async () => {
-    const { recordRawTreeUsageEvent } = await usageModulePromise;
-    rawTreeConfigured = false;
-
-    await recordRawTreeUsageEvent(
-      {
-        agentType: "main",
-        cachedInputTokens: 0,
-        createdAt: "2026-05-26T10:00:00.000Z",
-        id: "usage-1",
-        inputTokens: 1,
-        modelId: null,
-        outputTokens: 1,
-        provider: null,
-        source: "web",
-        toolCallCount: 0,
-        userId: "user-1",
-      },
-      null,
-    );
-
-    expect(insertRawTreeRowsMock).not.toHaveBeenCalled();
   });
 
   test("queries direct RawTree fields for usage history", async () => {
@@ -235,32 +206,35 @@ describe("RawTree usage storage", () => {
     ]);
   });
 
-  test("returns null when the RawTree table has not been created", async () => {
+  test("throws when RawTree usage history cannot be queried", async () => {
     const { getRawTreeUsageHistory } = await usageModulePromise;
+    const queryError = new Error("RawTree table is missing");
     queryRawTreeMock.mockImplementationOnce(async () => {
-      throw missingTableError;
+      throw queryError;
     });
 
-    await expect(getRawTreeUsageHistory("user-1")).resolves.toBeNull();
+    await expect(getRawTreeUsageHistory("user-1")).rejects.toThrow(queryError);
   });
 
-  test("returns null for organization analytics when the RawTree table is missing", async () => {
+  test("throws for organization analytics when RawTree cannot be queried", async () => {
     const {
       getRawTreeOrganizationUsageDays,
       getRawTreeOrganizationUsageUsers,
     } = await usageModulePromise;
+    const usersError = new Error("RawTree users query failed");
+    const daysError = new Error("RawTree days query failed");
     queryRawTreeMock.mockImplementationOnce(async () => {
-      throw missingTableError;
+      throw usersError;
     });
     queryRawTreeMock.mockImplementationOnce(async () => {
-      throw missingTableError;
+      throw daysError;
     });
 
     await expect(
       getRawTreeOrganizationUsageUsers("tinybird.co"),
-    ).resolves.toBeNull();
+    ).rejects.toThrow(usersError);
     await expect(
       getRawTreeOrganizationUsageDays("tinybird.co"),
-    ).resolves.toBeNull();
+    ).rejects.toThrow(daysError);
   });
 });

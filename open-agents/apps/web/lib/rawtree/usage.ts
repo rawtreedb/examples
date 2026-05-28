@@ -4,8 +4,6 @@ import type { UsageAggregateRow } from "@/lib/usage/compute-insights";
 import type { UsageDateRange } from "@/lib/usage/date-range";
 import {
   insertRawTreeRows,
-  isMissingRawTreeTableError,
-  isRawTreeConfigured,
   queryRawTree,
   sqlIdentifier,
   sqlStringLiteral,
@@ -137,10 +135,6 @@ export async function recordRawTreeUsageEvent(
   >,
   user: RawTreeUsageUserSnapshot | null,
 ): Promise<void> {
-  if (!isRawTreeConfigured()) {
-    return;
-  }
-
   await insertRawTreeRows(RAWTREE_USAGE_EVENTS_TABLE, {
     ...event,
     avatarUrl: user?.avatarUrl ?? null,
@@ -154,13 +148,8 @@ export async function recordRawTreeUsageEvent(
 
 export async function getRawTreeOrganizationUsageUsers(
   domain: string,
-): Promise<RawTreeOrganizationUsageUser[] | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeOrganizationUsageUserRow>(`
+): Promise<RawTreeOrganizationUsageUser[]> {
+  const rows = await queryRawTree<RawTreeOrganizationUsageUserRow>(`
       SELECT
         ${stringExpression("userId")} AS userIdValue,
         coalesce(any(${stringExpression("username")}), userIdValue) AS usernameValue,
@@ -175,34 +164,22 @@ export async function getRawTreeOrganizationUsageUsers(
       ORDER BY totalTokens DESC, usernameValue ASC
     `);
 
-    return rows.map((row) => ({
-      avatarUrl: row.avatarUrlValue ?? null,
-      lastSeenAt: row.lastSeenAtValue ?? null,
-      messageCount: numberValue(row.messageCount),
-      name: row.nameValue ?? null,
-      totalTokens: numberValue(row.totalTokens),
-      userId: row.userIdValue,
-      username: row.usernameValue || row.userIdValue,
-    }));
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return rows.map((row) => ({
+    avatarUrl: row.avatarUrlValue ?? null,
+    lastSeenAt: row.lastSeenAtValue ?? null,
+    messageCount: numberValue(row.messageCount),
+    name: row.nameValue ?? null,
+    totalTokens: numberValue(row.totalTokens),
+    userId: row.userIdValue,
+    username: row.usernameValue || row.userIdValue,
+  }));
 }
 
 export async function getRawTreeOrganizationUsageDays(
   domain: string,
   options?: RawTreeOrganizationUsageOptions,
-): Promise<RawTreeOrganizationUsageDay[] | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeOrganizationUsageDayRow>(`
+): Promise<RawTreeOrganizationUsageDay[]> {
+  const rows = await queryRawTree<RawTreeOrganizationUsageDayRow>(`
       SELECT
         ${dateExpression()} AS date,
         sum(${numberExpression("inputTokens")}) AS inputTokens,
@@ -216,33 +193,21 @@ export async function getRawTreeOrganizationUsageDays(
       ORDER BY date
     `);
 
-    return rows.map((row) => ({
-      cachedInputTokens: numberValue(row.cachedInputTokens),
-      date: row.date,
-      inputTokens: numberValue(row.inputTokens),
-      messageCount: numberValue(row.messageCount),
-      outputTokens: numberValue(row.outputTokens),
-      toolCallCount: numberValue(row.toolCallCount),
-    }));
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return rows.map((row) => ({
+    cachedInputTokens: numberValue(row.cachedInputTokens),
+    date: row.date,
+    inputTokens: numberValue(row.inputTokens),
+    messageCount: numberValue(row.messageCount),
+    outputTokens: numberValue(row.outputTokens),
+    toolCallCount: numberValue(row.toolCallCount),
+  }));
 }
 
 export async function getRawTreeUsageHistory(
   userId: string,
   options?: UsageHistoryOptions,
-): Promise<DailyUsage[] | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeUsageHistoryRow>(`
+): Promise<DailyUsage[]> {
+  const rows = await queryRawTree<RawTreeUsageHistoryRow>(`
       SELECT
         ${dateExpression()} AS date,
         ${stringExpression("source")} AS sourceValue,
@@ -265,37 +230,25 @@ export async function getRawTreeUsageHistory(
       ORDER BY date
     `);
 
-    return rows.map((row) => ({
-      agentType: row.agentTypeValue === "subagent" ? "subagent" : "main",
-      cachedInputTokens: numberValue(row.cachedInputTokens),
-      date: row.date,
-      inputTokens: numberValue(row.inputTokens),
-      messageCount: numberValue(row.messageCount),
-      modelId: row.modelIdValue ?? null,
-      outputTokens: numberValue(row.outputTokens),
-      provider: row.providerValue ?? null,
-      source: "web",
-      toolCallCount: numberValue(row.toolCallCount),
-    }));
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return rows.map((row) => ({
+    agentType: row.agentTypeValue === "subagent" ? "subagent" : "main",
+    cachedInputTokens: numberValue(row.cachedInputTokens),
+    date: row.date,
+    inputTokens: numberValue(row.inputTokens),
+    messageCount: numberValue(row.messageCount),
+    modelId: row.modelIdValue ?? null,
+    outputTokens: numberValue(row.outputTokens),
+    provider: row.providerValue ?? null,
+    source: "web",
+    toolCallCount: numberValue(row.toolCallCount),
+  }));
 }
 
 export async function getRawTreeUsageAggregate(
   userId: string,
   options?: UsageHistoryOptions,
-): Promise<UsageAggregateRow | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeUsageAggregateQueryRow>(`
+): Promise<UsageAggregateRow> {
+  const rows = await queryRawTree<RawTreeUsageAggregateQueryRow>(`
       SELECT
         sum(${numberExpression("inputTokens")}) AS totalInputTokens,
         sum(${numberExpression("cachedInputTokens")}) AS totalCachedInputTokens,
@@ -309,40 +262,28 @@ export async function getRawTreeUsageAggregate(
       WHERE ${buildUserUsageWhereClause(userId, options)}
     `);
 
-    const row = rows[0];
-    if (!row) {
-      return emptyUsageAggregate();
-    }
-
-    return {
-      largestMainTurnTokens: numberValue(row.largestMainTurnTokens),
-      mainAssistantTurnCount: numberValue(row.mainAssistantTurnCount),
-      mainInputTokens: numberValue(row.mainInputTokens),
-      mainOutputTokens: numberValue(row.mainOutputTokens),
-      totalCachedInputTokens: numberValue(row.totalCachedInputTokens),
-      totalInputTokens: numberValue(row.totalInputTokens),
-      totalOutputTokens: numberValue(row.totalOutputTokens),
-      totalToolCallCount: numberValue(row.totalToolCallCount),
-    };
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
+  const row = rows[0];
+  if (!row) {
+    return emptyUsageAggregate();
   }
+
+  return {
+    largestMainTurnTokens: numberValue(row.largestMainTurnTokens),
+    mainAssistantTurnCount: numberValue(row.mainAssistantTurnCount),
+    mainInputTokens: numberValue(row.mainInputTokens),
+    mainOutputTokens: numberValue(row.mainOutputTokens),
+    totalCachedInputTokens: numberValue(row.totalCachedInputTokens),
+    totalInputTokens: numberValue(row.totalInputTokens),
+    totalOutputTokens: numberValue(row.totalOutputTokens),
+    totalToolCallCount: numberValue(row.totalToolCallCount),
+  };
 }
 
 export async function getRawTreeUsageDomainLeaderboardRows(
   domain: string,
   options?: UsageDomainLeaderboardOptions,
-): Promise<RawTreeUsageDomainLeaderboardQueryRow[] | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeUsageDomainLeaderboardRawRow>(`
+): Promise<RawTreeUsageDomainLeaderboardQueryRow[]> {
+  const rows = await queryRawTree<RawTreeUsageDomainLeaderboardRawRow>(`
       SELECT
         ${stringExpression("userId")} AS userIdValue,
         any(${stringExpression("email")}) AS emailValue,
@@ -359,23 +300,16 @@ export async function getRawTreeUsageDomainLeaderboardRows(
         modelIdValue
     `);
 
-    return rows.map((row) => ({
-      avatarUrl: row.avatarUrlValue ?? null,
-      email: row.emailValue ?? null,
-      modelId: row.modelIdValue ?? null,
-      name: row.nameValue ?? null,
-      totalInputTokens: numberValue(row.totalInputTokens),
-      totalOutputTokens: numberValue(row.totalOutputTokens),
-      userId: row.userIdValue,
-      username: row.usernameValue || row.userIdValue,
-    }));
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return rows.map((row) => ({
+    avatarUrl: row.avatarUrlValue ?? null,
+    email: row.emailValue ?? null,
+    modelId: row.modelIdValue ?? null,
+    name: row.nameValue ?? null,
+    totalInputTokens: numberValue(row.totalInputTokens),
+    totalOutputTokens: numberValue(row.totalOutputTokens),
+    userId: row.userIdValue,
+    username: row.usernameValue || row.userIdValue,
+  }));
 }
 
 function buildUserUsageWhereClause(

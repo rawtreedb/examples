@@ -40,12 +40,10 @@ export async function GET(req: NextRequest) {
   try {
     const users = await getRawTreeOrganizationUsageUsers(domain);
     const requestedUserIds = parseSelectedUserIds(req);
-    const allowedUserIds = users
-      ? new Set(users.map((user) => user.userId))
-      : null;
-    const selectedUserIds = allowedUserIds
-      ? requestedUserIds.filter((userId) => allowedUserIds.has(userId))
-      : requestedUserIds;
+    const allowedUserIds = new Set(users.map((user) => user.userId));
+    const selectedUserIds = requestedUserIds.filter((userId) =>
+      allowedUserIds.has(userId),
+    );
     const rawTraces = await getRawTreeOrganizationSandboxTraces(domain, {
       ...(rangeResult.range ? { range: rangeResult.range } : {}),
       ...(selectedUserIds.length > 0 ? { userIds: selectedUserIds } : {}),
@@ -58,11 +56,10 @@ export async function GET(req: NextRequest) {
     return Response.json({
       organization: {
         domain,
-        rawTreeAvailable: traces !== null,
         selectedUserIds,
         source: "rawtree",
-        traces: traces ?? [],
-        users: users ?? [],
+        traces,
+        users,
       },
     });
   } catch (error) {

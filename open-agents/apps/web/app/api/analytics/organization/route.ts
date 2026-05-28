@@ -46,29 +46,6 @@ export async function GET(req: NextRequest) {
     const rangeOptions = rangeResult.range
       ? { range: rangeResult.range }
       : undefined;
-    if (!users) {
-      const [repositories, rawSandboxTraces] = await Promise.all([
-        getOrganizationRepositoryEdits(domain, rangeOptions),
-        getRawTreeOrganizationSandboxTraces(domain, rangeOptions),
-      ]);
-      const sandboxTraces = await enrichSandboxTracesWithSessionMetadata(
-        domain,
-        rawSandboxTraces,
-      );
-      return Response.json({
-        organization: {
-          domain,
-          repositories,
-          rawTreeAvailable: sandboxTraces !== null,
-          sandboxTraces: sandboxTraces ?? [],
-          selectedUserIds: [],
-          source: "rawtree",
-          usage: [],
-          users: [],
-        },
-      });
-    }
-
     const allowedUserIds = new Set(users.map((user) => user.userId));
     const selectedUserIds = parseSelectedUserIds(req).filter((userId) =>
       allowedUserIds.has(userId),
@@ -91,11 +68,10 @@ export async function GET(req: NextRequest) {
       organization: {
         domain,
         repositories,
-        rawTreeAvailable: usage !== null || sandboxTraces !== null,
-        sandboxTraces: sandboxTraces ?? [],
+        sandboxTraces,
         selectedUserIds,
         source: "rawtree",
-        usage: usage ?? [],
+        usage,
         users,
       },
     });

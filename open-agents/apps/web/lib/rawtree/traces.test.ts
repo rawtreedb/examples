@@ -2,15 +2,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-const missingTableError = new Error("RawTree table is missing");
 const insertRawTreeRowsMock = mock(async () => undefined);
 const queryRawTreeMock = mock(async (_sql: string): Promise<unknown[]> => []);
-let rawTreeConfigured = true;
 
 mock.module("./client", () => ({
   insertRawTreeRows: insertRawTreeRowsMock,
-  isMissingRawTreeTableError: (error: unknown) => error === missingTableError,
-  isRawTreeConfigured: () => rawTreeConfigured,
   queryRawTree: queryRawTreeMock,
   sqlIdentifier: (value: string) => `\`${value}\``,
   sqlStringLiteral: (value: string) => `'${value.replaceAll("'", "''")}'`,
@@ -19,7 +15,6 @@ mock.module("./client", () => ({
 const tracesModulePromise = import("./traces");
 
 beforeEach(() => {
-  rawTreeConfigured = true;
   queryRawTreeMock.mockClear();
   queryRawTreeMock.mockImplementation(async () => []);
 });
@@ -86,10 +81,6 @@ describe("RawTree sandbox traces", () => {
     });
 
     const traces = await getRawTreeOrganizationSandboxTraces("tinybird.co");
-
-    if (!traces) {
-      throw new Error("Expected sandbox traces to be available");
-    }
 
     expect(traces).toHaveLength(1);
     expect(traces[0]).toMatchObject({

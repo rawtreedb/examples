@@ -28,7 +28,7 @@ type RawTreeTracingRegistration = {
 };
 
 type GlobalWithRawTreeTracing = typeof globalThis & {
-  __openAgentsRawTreeTracing?: RawTreeTracingRegistration | null;
+  __openAgentsRawTreeTracing?: RawTreeTracingRegistration;
 };
 
 export type RawTreeSpanAttributes = Record<string, AttributeValue | undefined>;
@@ -38,7 +38,7 @@ const DEFAULT_SERVICE_NAME = "open-agents-web";
 
 export function registerRawTreeTracing(
   serviceName = DEFAULT_SERVICE_NAME,
-): RawTreeTracingRegistration | null {
+): RawTreeTracingRegistration {
   const globalState = globalThis as GlobalWithRawTreeTracing;
   if (globalState.__openAgentsRawTreeTracing !== undefined) {
     return globalState.__openAgentsRawTreeTracing;
@@ -46,8 +46,7 @@ export function registerRawTreeTracing(
 
   const apiKey = process.env.RAWTREE_API_KEY?.trim();
   if (!apiKey) {
-    globalState.__openAgentsRawTreeTracing = null;
-    return null;
+    throw new Error("Set RAWTREE_API_KEY to use RawTree tracing.");
   }
 
   const endpoint = `${RAWTREE_API_URL}/v1/tables/${encodeURIComponent(
@@ -85,7 +84,7 @@ export function registerRawTreeTracing(
 
 export async function forceFlushRawTreeTracing(): Promise<void> {
   const registration = registerRawTreeTracing();
-  await registration?.provider.forceFlush();
+  await registration.provider.forceFlush();
 }
 
 export function getRawTreeTracer() {

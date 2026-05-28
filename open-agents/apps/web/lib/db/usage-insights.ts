@@ -1,7 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
   buildUsageInsights,
-  type UsageAggregateRow,
   type UsageSessionInsightRow,
 } from "@/lib/usage/compute-insights";
 import {
@@ -11,42 +10,12 @@ import {
 import { getRawTreeUsageAggregate } from "@/lib/rawtree/usage";
 import type { UsageInsights } from "@/lib/usage/types";
 import { db } from "./client";
-import { sessions, usageEvents } from "./schema";
-
-const EMPTY_USAGE_AGGREGATE: UsageAggregateRow = {
-  totalInputTokens: 0,
-  totalCachedInputTokens: 0,
-  totalOutputTokens: 0,
-  totalToolCallCount: 0,
-  mainInputTokens: 0,
-  mainOutputTokens: 0,
-  mainAssistantTurnCount: 0,
-  largestMainTurnTokens: 0,
-};
+import { sessions } from "./schema";
 
 export interface UsageInsightsOptions {
   days?: number;
   range?: UsageDateRange;
   allTime?: boolean;
-}
-
-function buildUsageEventsWhereClause(
-  userId: string,
-  options?: UsageInsightsOptions,
-) {
-  if (options?.range) {
-    return sql`${usageEvents.userId} = ${userId} and date(${usageEvents.createdAt}) >= ${options.range.from} and date(${usageEvents.createdAt}) <= ${options.range.to}`;
-  }
-
-  if (options?.allTime) {
-    return sql`${usageEvents.userId} = ${userId}`;
-  }
-
-  const days = options?.days ?? 280;
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  return sql`${usageEvents.userId} = ${userId} and ${usageEvents.createdAt} >= ${since.toISOString()}`;
 }
 
 function buildSessionsWhereClause(
@@ -91,17 +60,8 @@ export async function getUsageInsights(
   userId: string,
   options?: UsageInsightsOptions,
 ): Promise<UsageInsights> {
-  const rawTreeAggregatePromise = getRawTreeUsageAggregate(
-    userId,
-    options,
-  ).catch((error) => {
-    console.error("Failed to read RawTree usage aggregate:", error);
-    return null;
-  });
-
-  const [rawTreeAggregate, aggregateRows, sessionRows] = await Promise.all([
-    rawTreeAggregatePromise,
-    getPostgresUsageAggregate(userId, options),
+  const [aggregate, sessionRows] = await Promise.all([
+    getRawTreeUsageAggregate(userId, options),
     db
       .select({
         repoOwner: sessions.repoOwner,
@@ -116,31 +76,9 @@ export async function getUsageInsights(
       .where(buildSessionsWhereClause(userId, options)),
   ]);
 
-  const aggregate =
-    rawTreeAggregate ?? aggregateRows[0] ?? EMPTY_USAGE_AGGREGATE;
-
   return buildUsageInsights({
     lookbackDays: getLookbackDays(options),
     aggregate,
     sessions: sessionRows as UsageSessionInsightRow[],
   });
-}
-
-function getPostgresUsageAggregate(
-  userId: string,
-  options?: UsageInsightsOptions,
-) {
-  return db
-    .select({
-      totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
-      totalCachedInputTokens: sql<number>`coalesce(sum(${usageEvents.cachedInputTokens}), 0)::double precision`,
-      totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
-      totalToolCallCount: sql<number>`coalesce(sum(${usageEvents.toolCallCount}), 0)::double precision`,
-      mainInputTokens: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then ${usageEvents.inputTokens} else 0 end), 0)::double precision`,
-      mainOutputTokens: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then ${usageEvents.outputTokens} else 0 end), 0)::double precision`,
-      mainAssistantTurnCount: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then 1 else 0 end), 0)::double precision`,
-      largestMainTurnTokens: sql<number>`coalesce(max(case when ${usageEvents.agentType} = 'main' then cast(${usageEvents.inputTokens} as bigint) + cast(${usageEvents.outputTokens} as bigint) end), 0)::double precision`,
-    })
-    .from(usageEvents)
-    .where(buildUsageEventsWhereClause(userId, options));
 }

@@ -1,10 +1,5 @@
 import type { UsageDateRange } from "@/lib/usage/date-range";
-import {
-  isMissingRawTreeTableError,
-  isRawTreeConfigured,
-  queryRawTree,
-  sqlIdentifier,
-} from "./client";
+import { queryRawTree, sqlIdentifier } from "./client";
 import {
   getRawTreeProductSpanCategory,
   isRawTreeSandboxSpan,
@@ -105,13 +100,8 @@ const NANOS_PER_MS = BigInt(NANOS_PER_MS_NUMBER);
 export async function getRawTreeOrganizationSandboxTraces(
   domain: string,
   options?: RawTreeOrganizationSandboxTraceOptions,
-): Promise<RawTreeSandboxTraceSummary[] | null> {
-  if (!isRawTreeConfigured()) {
-    return null;
-  }
-
-  try {
-    const rows = await queryRawTree<RawTreeTraceRow>(`
+): Promise<RawTreeSandboxTraceSummary[]> {
+  const rows = await queryRawTree<RawTreeTraceRow>(`
       SELECT
         name,
         traceId,
@@ -126,14 +116,7 @@ export async function getRawTreeOrganizationSandboxTraces(
       LIMIT ${TRACE_QUERY_LIMIT}
     `);
 
-    return summarizeSandboxTraces(rows, domain, options);
-  } catch (error) {
-    if (isMissingRawTreeTableError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return summarizeSandboxTraces(rows, domain, options);
 }
 
 function summarizeSandboxTraces(
