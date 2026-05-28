@@ -13,6 +13,7 @@ export type RawTreeSandboxTraceSummary = {
   durationMs: number;
   errorCount: number;
   lastSeenAt: string | null;
+  matchedOrganizationDomain?: boolean;
   repoName: string | null;
   repoOwner: string | null;
   sandboxCreateCount: number;
@@ -125,6 +126,7 @@ function summarizeSandboxTraces(
   domain: string,
   options?: RawTreeOrganizationSandboxTraceOptions,
 ): RawTreeSandboxTraceSummary[] {
+  const normalizedDomain = domain.trim().toLowerCase();
   const selectedUserIds = new Set(options?.userIds);
   const traces = new Map<string, TraceAccumulator>();
 
@@ -155,7 +157,7 @@ function summarizeSandboxTraces(
       null,
       attributes["user.email_domain"],
       attributes["ai.telemetry.metadata.user.email_domain"],
-    );
+    )?.toLowerCase();
     if (emailDomain) {
       accumulator.emailDomains.add(emailDomain);
     }
@@ -235,7 +237,11 @@ function summarizeSandboxTraces(
   }
 
   return [...traces.values()]
-    .filter((trace) => trace.emailDomains.has(domain))
+    .filter(
+      (trace) =>
+        trace.emailDomains.size === 0 ||
+        trace.emailDomains.has(normalizedDomain),
+    )
     .filter(
       (trace) =>
         selectedUserIds.size === 0 ||
@@ -243,7 +249,7 @@ function summarizeSandboxTraces(
     )
     .filter((trace) => trace.hasSandboxActivity)
     .filter((trace) => isInRange(trace.startNs, options?.range))
-    .map(toTraceSummary)
+    .map((trace) => toTraceSummary(trace, normalizedDomain))
     .sort((left, right) => {
       const leftTime = left.lastSeenAt ?? "";
       const rightTime = right.lastSeenAt ?? "";
@@ -285,7 +291,10 @@ function getTraceAccumulator(
   return created;
 }
 
-function toTraceSummary(trace: TraceAccumulator): RawTreeSandboxTraceSummary {
+function toTraceSummary(
+  trace: TraceAccumulator,
+  domain: string,
+): RawTreeSandboxTraceSummary {
   const spans = toTraceSpans(trace);
 
   return {
@@ -299,6 +308,7 @@ function toTraceSummary(trace: TraceAccumulator): RawTreeSandboxTraceSummary {
         : 0,
     errorCount: trace.errorCount,
     lastSeenAt: nanosToIso(trace.endNs),
+    matchedOrganizationDomain: trace.emailDomains.has(domain),
     repoName: trace.repoName,
     repoOwner: trace.repoOwner,
     sandboxCreateCount: trace.sandboxCreateCount,

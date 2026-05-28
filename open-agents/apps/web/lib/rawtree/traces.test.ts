@@ -70,6 +70,7 @@ describe("RawTree sandbox traces", () => {
         }),
         traceRow({
           attributes: [
+            attr("user.email_domain", "example.com"),
             attr("sandbox.name", "session_2"),
             attr("sandbox.session_id", "sbx_2"),
             attr("sandbox.command", "git status"),
@@ -189,6 +190,29 @@ describe("RawTree sandbox traces", () => {
       sessionId: "session-1",
       sessionTitle: "Telemetry demo",
       userId: "user-1",
+    });
+  });
+
+  test("keeps domainless session sandbox traces for metadata enrichment", async () => {
+    const { getRawTreeOrganizationSandboxTraces } = await tracesModulePromise;
+    queryRawTreeMock.mockImplementationOnce(async () => [
+      traceRow({
+        attributes: [
+          attr("sandbox.name", "session_1"),
+          attr("sandbox.command", "git status"),
+        ],
+        name: "sandbox.command",
+        traceId: "trace-1",
+      }),
+    ]);
+
+    const traces = await getRawTreeOrganizationSandboxTraces("tinybird.co");
+
+    expect(traces).toHaveLength(1);
+    expect(traces[0]).toMatchObject({
+      matchedOrganizationDomain: false,
+      sandboxName: "session_1",
+      traceId: "trace-1",
     });
   });
 });

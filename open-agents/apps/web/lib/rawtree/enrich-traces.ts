@@ -38,10 +38,14 @@ export async function enrichSandboxTracesWithSessionMetadata(
     domain,
   );
 
-  return traces.map((trace) => {
+  return traces.flatMap((trace) => {
     const metadata = getTraceSessionIdCandidates(trace)
       .map((candidate) => metadataBySessionId.get(candidate))
       .find(Boolean);
+
+    if (!metadata && !trace.matchedOrganizationDomain) {
+      return [];
+    }
 
     return {
       ...trace,
@@ -50,6 +54,8 @@ export async function enrichSandboxTracesWithSessionMetadata(
       sessionId: metadata?.id ?? trace.sessionId,
       sessionTitle: metadata?.title ?? trace.sessionTitle,
       startedAt: trace.startedAt ?? metadata?.createdAt.toISOString() ?? null,
+      userId: metadata?.userId ?? trace.userId,
+      username: metadata?.username ?? trace.username,
     };
   });
 }

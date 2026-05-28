@@ -121,6 +121,8 @@ export type SessionTraceMetadata = {
   repoName: string | null;
   repoOwner: string | null;
   title: string;
+  userId: string;
+  username: string;
 };
 
 export async function getSessionTraceMetadataByIds(
@@ -144,6 +146,8 @@ export async function getSessionTraceMetadataByIds(
       repoName: sessions.repoName,
       repoOwner: sessions.repoOwner,
       title: sessions.title,
+      userId: sessions.userId,
+      username: users.username,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
