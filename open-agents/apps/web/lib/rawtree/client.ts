@@ -1,4 +1,4 @@
-import { RawTree, type JsonObject } from "@rawtree/sdk";
+import { RawTree, RawTreeError, type JsonObject } from "@rawtree/sdk";
 
 export type RawTreeJsonObject = JsonObject;
 
@@ -13,8 +13,16 @@ export async function insertRawTreeRows<Row extends RawTreeJsonObject>(
 }
 
 export async function queryRawTree<Row>(sql: string): Promise<Row[]> {
-  const response = await getRawTreeClient().query<Row>(sql);
-  return response.data;
+  try {
+    const response = await getRawTreeClient().query<Row>(sql);
+    return response.data;
+  } catch (error) {
+    if (isRawTreeMissingTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 export function sqlIdentifier(value: string): string {
@@ -47,4 +55,15 @@ function getRawTreeClient(): RawTree {
   rawtreeClientApiKey = apiKey;
   rawtreeClient = new RawTree({ apiKey });
   return rawtreeClient;
+}
+
+function isRawTreeMissingTableError(error: unknown): boolean {
+  if (!(error instanceof RawTreeError) || error.status !== 400) {
+    return false;
+  }
+
+  return (
+    error.message.toLowerCase().includes("table not found") ||
+    error.hint?.toLowerCase().includes("make sure it exists") === true
+  );
 }
