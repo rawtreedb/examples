@@ -138,6 +138,37 @@ function getRepoOptions(traces: OrganizationSessionTrace[]) {
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 
+function getTraceSessionKey(trace: OrganizationSessionTrace): string {
+  if (trace.sessionId) {
+    return `session:${trace.sessionId}`;
+  }
+
+  if (trace.sandboxName) {
+    return `sandbox:${trace.sandboxName}`;
+  }
+
+  return `trace:${trace.traceId}`;
+}
+
+function getSessionOptions(traces: OrganizationSessionTrace[]) {
+  const optionsBySession = new Map<string, OrganizationSessionTrace>();
+
+  for (const trace of traces) {
+    const key = getTraceSessionKey(trace);
+    const existing = optionsBySession.get(key);
+    if (
+      !existing ||
+      (trace.lastSeenAt ?? "").localeCompare(existing.lastSeenAt ?? "") > 0
+    ) {
+      optionsBySession.set(key, trace);
+    }
+  }
+
+  return [...optionsBySession.values()].sort((left, right) =>
+    (right.lastSeenAt ?? "").localeCompare(left.lastSeenAt ?? ""),
+  );
+}
+
 function getSpanRowLabel(span: OrganizationTraceSpan): string {
   if (span.detail && span.detail !== span.name) {
     return span.detail;
@@ -266,10 +297,22 @@ function TraceSummary({
   const repoOptions = useMemo(() => getRepoOptions(traces), [traces]);
   const sessionOptions = useMemo(
     () =>
-      traces.filter((candidate) => getRepoKey(candidate) === selectedRepoKey),
+      getSessionOptions(
+        traces.filter((candidate) => getRepoKey(candidate) === selectedRepoKey),
+      ),
     [selectedRepoKey, traces],
   );
+  const selectedSessionKey = getTraceSessionKey(trace);
   const user = trace.username ?? trace.userId;
+
+  function handleSelectSession(sessionKey: string) {
+    const selectedTrace = sessionOptions.find(
+      (option) => getTraceSessionKey(option) === sessionKey,
+    );
+    if (selectedTrace) {
+      onSelectTrace(selectedTrace.traceId);
+    }
+  }
 
   return (
     <div className="rounded-md border border-border/50 bg-background">
@@ -302,13 +345,19 @@ function TraceSummary({
             >
               Session
             </label>
-            <Select value={trace.traceId} onValueChange={onSelectTrace}>
+            <Select
+              value={selectedSessionKey}
+              onValueChange={handleSelectSession}
+            >
               <SelectTrigger id="trace-session" className="w-full">
                 <SelectValue placeholder="Select session" />
               </SelectTrigger>
               <SelectContent>
                 {sessionOptions.map((option) => (
-                  <SelectItem key={option.traceId} value={option.traceId}>
+                  <SelectItem
+                    key={getTraceSessionKey(option)}
+                    value={getTraceSessionKey(option)}
+                  >
                     <span className="block truncate">
                       {getTraceTitle(option)}
                     </span>

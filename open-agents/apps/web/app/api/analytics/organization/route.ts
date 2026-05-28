@@ -4,7 +4,10 @@ import {
   getRawTreeOrganizationUsageDays,
   getRawTreeOrganizationUsageUsers,
 } from "@/lib/rawtree/usage";
-import { enrichSandboxTracesWithSessionMetadata } from "@/lib/rawtree/enrich-traces";
+import {
+  enrichSandboxTracesWithSessionMetadata,
+  summarizeSandboxTracesBySession,
+} from "@/lib/rawtree/enrich-traces";
 import { getRawTreeOrganizationSandboxTraces } from "@/lib/rawtree/traces";
 import { getOrganizationRepositoryEdits } from "@/lib/db/organization-analytics";
 import { getAllowedOrganizationEmailDomain } from "@/lib/auth/allowed-email-domains";
@@ -39,11 +42,14 @@ export async function GET(req: NextRequest) {
       getRawTreeOrganizationUsageUsers(domain, rangeOptions),
       getRawTreeOrganizationUsageDays(domain, rangeOptions),
       getOrganizationRepositoryEdits(domain, rangeOptions),
-      getRawTreeOrganizationSandboxTraces(domain, rangeOptions),
+      getRawTreeOrganizationSandboxTraces(domain, {
+        ...rangeOptions,
+        includeSessionProductTraces: true,
+        limit: 500,
+      }),
     ]);
-    const sandboxTraces = await enrichSandboxTracesWithSessionMetadata(
-      domain,
-      rawSandboxTraces,
+    const sandboxTraces = summarizeSandboxTracesBySession(
+      await enrichSandboxTracesWithSessionMetadata(domain, rawSandboxTraces),
     );
 
     return Response.json({

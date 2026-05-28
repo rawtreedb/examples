@@ -17,7 +17,7 @@ class MockRawTreeError extends Error {
     status: number;
   }) {
     super(message);
-    this.name = "RawTreeError";
+    this.name = "MockRawTreeError";
     this.status = status;
     this.error = error;
     this.hint = hint;
@@ -29,11 +29,15 @@ const queryMock = mock(async () => ({
   data: [] as unknown[],
 }));
 
+function MockRawTree() {
+  return {
+    insert: insertMock,
+    query: queryMock,
+  };
+}
+
 mock.module("@rawtree/sdk", () => ({
-  RawTree: class {
-    insert = insertMock;
-    query = queryMock;
-  },
+  RawTree: MockRawTree,
   RawTreeError: MockRawTreeError,
 }));
 

@@ -108,6 +108,49 @@ describe("RawTree trace enrichment", () => {
     expect(traces).toHaveLength(1);
     expect(traces[0]?.sessionId).toBe("session-1");
   });
+
+  test("summarizes multiple trace segments into one session row", async () => {
+    const { summarizeSandboxTracesBySession } = await enrichTracesModulePromise;
+
+    const traces = summarizeSandboxTracesBySession([
+      traceSummary({
+        commandCount: 2,
+        errorCount: 1,
+        lastSeenAt: "2026-05-27T17:45:00.000Z",
+        sessionId: "session-1",
+        spanCount: 4,
+        startedAt: "2026-05-27T17:44:00.000Z",
+        traceId: "latest-trace",
+      }),
+      traceSummary({
+        aiSpanCount: 3,
+        commandCount: 0,
+        lastSeenAt: "2026-05-27T17:43:30.000Z",
+        sessionId: "session-1",
+        spanCount: 3,
+        startedAt: "2026-05-27T17:43:00.000Z",
+        traceId: "older-trace",
+      }),
+      traceSummary({
+        lastSeenAt: "2026-05-27T17:42:00.000Z",
+        sessionId: "session-2",
+        traceId: "other-session",
+      }),
+    ]);
+
+    expect(traces).toHaveLength(2);
+    expect(traces[0]).toMatchObject({
+      aiSpanCount: 3,
+      commandCount: 2,
+      durationMs: 120_000,
+      errorCount: 1,
+      lastSeenAt: "2026-05-27T17:45:00.000Z",
+      sessionId: "session-1",
+      spanCount: 7,
+      startedAt: "2026-05-27T17:43:00.000Z",
+      traceId: "latest-trace",
+    });
+  });
 });
 
 function traceSummary(

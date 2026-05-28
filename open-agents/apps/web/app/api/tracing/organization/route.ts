@@ -25,10 +25,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rawTraces = await getRawTreeOrganizationSandboxTraces(
-      domain,
-      rangeResult.range ? { range: rangeResult.range } : undefined,
-    );
+    const rawTraces = await getRawTreeOrganizationSandboxTraces(domain, {
+      ...(rangeResult.range ? { range: rangeResult.range } : {}),
+      includeSessionProductTraces: true,
+      limit: 500,
+    });
     const traces = await enrichSandboxTracesWithSessionMetadata(
       domain,
       rawTraces,

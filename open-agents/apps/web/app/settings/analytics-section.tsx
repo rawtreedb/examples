@@ -4,6 +4,7 @@ import { formatTokens } from "@open-agents/shared";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { DateRange } from "react-day-picker";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import useSWR from "swr";
 import { ContributionChart } from "@/components/contribution-chart";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -95,6 +102,12 @@ interface OrganizationAnalyticsResponse {
 
 const EMPTY_USAGE: OrganizationUsageDay[] = [];
 const ACTIVITY_CHART_WEEKS = 53;
+const ACTIVE_USERS_CHART_CONFIG = {
+  activeUsers: {
+    color: "var(--chart-1)",
+    label: "Active users",
+  },
+} satisfies ChartConfig;
 
 function buildAnalyticsPath(range: DateRange | undefined): string {
   const query = new URLSearchParams();
@@ -283,43 +296,16 @@ function StatBlock({
   );
 }
 
-function getActiveUserChartPath(
-  rows: OrganizationUsageDay[],
-  width: number,
-  height: number,
-  padding: { bottom: number; left: number; right: number; top: number },
-): string {
-  const maxUsers = Math.max(...rows.map((row) => row.activeUserCount), 1);
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-
-  return rows
-    .map((row, index) => {
-      const x =
-        padding.left +
-        (rows.length === 1
-          ? plotWidth
-          : (index / (rows.length - 1)) * plotWidth);
-      const y =
-        padding.top +
-        plotHeight -
-        (row.activeUserCount / maxUsers) * plotHeight;
-
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-}
-
 function ActiveUsersSection({ usage }: { usage: OrganizationUsageDay[] }) {
-  const rows = usage.filter((row) => row.activeUserCount > 0);
+  const rows = usage
+    .filter((row) => row.activeUserCount > 0)
+    .map((row) => ({
+      ...row,
+      activeUsers: row.activeUserCount,
+    }));
   const maxUsers = Math.max(...rows.map((row) => row.activeUserCount), 0);
   const latest = rows.at(-1);
   const first = rows[0];
-  const width = 640;
-  const height = 180;
-  const padding = { bottom: 26, left: 34, right: 18, top: 18 };
-  const path =
-    rows.length > 0 ? getActiveUserChartPath(rows, width, height, padding) : "";
 
   return (
     <Card>
@@ -357,104 +343,64 @@ function ActiveUsersSection({ usage }: { usage: OrganizationUsageDay[] }) {
                 }
               />
             </div>
-            <div className="overflow-x-auto">
-              <svg
-                aria-label="Daily active users line chart"
-                className="h-48 min-w-[560px] w-full"
-                preserveAspectRatio="none"
-                role="img"
-                viewBox={`0 0 ${width} ${height}`}
+            <ChartContainer
+              className="h-56 w-full"
+              config={ACTIVE_USERS_CHART_CONFIG}
+            >
+              <LineChart
+                accessibilityLayer
+                data={rows}
+                margin={{ bottom: 4, left: 0, right: 12, top: 12 }}
               >
-                <line
-                  x1={padding.left}
-                  x2={width - padding.right}
-                  y1={height - padding.bottom}
-                  y2={height - padding.bottom}
-                  className="stroke-border"
+                <CartesianGrid strokeDasharray="4 6" vertical={false} />
+                <XAxis
+                  axisLine={false}
+                  dataKey="date"
+                  minTickGap={28}
+                  tickFormatter={formatShortDate}
+                  tickLine={false}
+                  tickMargin={8}
                 />
-                <line
-                  x1={padding.left}
-                  x2={padding.left}
-                  y1={padding.top}
-                  y2={height - padding.bottom}
-                  className="stroke-border"
+                <YAxis
+                  allowDecimals={false}
+                  axisLine={false}
+                  domain={[0, Math.max(maxUsers, 1)]}
+                  tickFormatter={(value) => Number(value).toLocaleString()}
+                  tickLine={false}
+                  tickMargin={8}
+                  width={36}
                 />
-                {[0.25, 0.5, 0.75, 1].map((tick) => {
-                  const y =
-                    padding.top +
-                    (height - padding.top - padding.bottom) * (1 - tick);
-                  return (
-                    <line
-                      key={tick}
-                      x1={padding.left}
-                      x2={width - padding.right}
-                      y1={y}
-                      y2={y}
-                      className="stroke-border/60"
-                      strokeDasharray="4 6"
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      indicator="line"
+                      labelFormatter={(_, payload) => {
+                        const date = payload[0]?.payload?.date;
+                        return typeof date === "string"
+                          ? formatShortDate(date)
+                          : "Active users";
+                      }}
                     />
-                  );
-                })}
-                <path
-                  d={path}
-                  className="fill-none stroke-foreground"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2.5"
+                  }
+                  cursor={false}
                 />
-                {rows.map((row, index) => {
-                  const plotWidth = width - padding.left - padding.right;
-                  const plotHeight = height - padding.top - padding.bottom;
-                  const x =
-                    padding.left +
-                    (rows.length === 1
-                      ? plotWidth
-                      : (index / (rows.length - 1)) * plotWidth);
-                  const y =
-                    padding.top +
-                    plotHeight -
-                    (row.activeUserCount / Math.max(maxUsers, 1)) * plotHeight;
-
-                  return (
-                    <circle
-                      key={row.date}
-                      cx={x}
-                      cy={y}
-                      r={index === rows.length - 1 ? 4 : 2.5}
-                      className="fill-background stroke-foreground"
-                      strokeWidth="2"
-                    >
-                      <title>
-                        {formatShortDate(row.date)}:{" "}
-                        {row.activeUserCount.toLocaleString()} active users
-                      </title>
-                    </circle>
-                  );
-                })}
-                <text
-                  x={padding.left}
-                  y={height - 6}
-                  className="fill-muted-foreground text-[11px]"
-                >
-                  {first ? formatShortDate(first.date) : ""}
-                </text>
-                <text
-                  textAnchor="end"
-                  x={width - padding.right}
-                  y={height - 6}
-                  className="fill-muted-foreground text-[11px]"
-                >
-                  {latest ? formatShortDate(latest.date) : ""}
-                </text>
-                <text
-                  x={4}
-                  y={padding.top + 4}
-                  className="fill-muted-foreground text-[11px]"
-                >
-                  {maxUsers.toLocaleString()}
-                </text>
-              </svg>
-            </div>
+                <Line
+                  activeDot={{
+                    r: 5,
+                  }}
+                  dataKey="activeUsers"
+                  dot={{
+                    fill: "var(--background)",
+                    r: 3,
+                    strokeWidth: 2,
+                  }}
+                  name="Active users"
+                  stroke="var(--color-activeUsers)"
+                  strokeWidth={2.5}
+                  type="monotone"
+                />
+              </LineChart>
+            </ChartContainer>
           </div>
         )}
       </CardContent>

@@ -215,6 +215,36 @@ describe("RawTree sandbox traces", () => {
       traceId: "trace-1",
     });
   });
+
+  test("can include AI session traces without sandbox activity", async () => {
+    const { getRawTreeOrganizationSandboxTraces } = await tracesModulePromise;
+    queryRawTreeMock.mockImplementation(async () => [
+      traceRow({
+        attributes: [
+          attr("ai.operationId", "ai.streamText"),
+          attr("ai.telemetry.metadata.user.email_domain", "tinybird.co"),
+          attr("ai.telemetry.metadata.session.id", "session-1"),
+        ],
+        name: "ai.streamText",
+        traceId: "trace-1",
+      }),
+    ]);
+
+    await expect(
+      getRawTreeOrganizationSandboxTraces("tinybird.co"),
+    ).resolves.toEqual([]);
+    await expect(
+      getRawTreeOrganizationSandboxTraces("tinybird.co", {
+        includeSessionProductTraces: true,
+      }),
+    ).resolves.toMatchObject([
+      {
+        aiSpanCount: 1,
+        sessionId: "session-1",
+        traceId: "trace-1",
+      },
+    ]);
+  });
 });
 
 function traceRow({

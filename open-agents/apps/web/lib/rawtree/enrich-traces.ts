@@ -59,3 +59,125 @@ export async function enrichSandboxTracesWithSessionMetadata(
     };
   });
 }
+
+export function summarizeSandboxTracesBySession(
+  traces: RawTreeSandboxTraceSummary[],
+  limit = 20,
+): RawTreeSandboxTraceSummary[] {
+  const summariesBySession = new Map<string, RawTreeSandboxTraceSummary>();
+
+  for (const trace of traces) {
+    const key = getTraceSessionGroupKey(trace);
+    const existing = summariesBySession.get(key);
+    if (!existing) {
+      summariesBySession.set(key, { ...trace });
+      continue;
+    }
+
+    summariesBySession.set(key, mergeSessionTraceSummary(existing, trace));
+  }
+
+  return [...summariesBySession.values()]
+    .sort((left, right) =>
+      (right.lastSeenAt ?? "").localeCompare(left.lastSeenAt ?? ""),
+    )
+    .slice(0, limit);
+}
+
+function getTraceSessionGroupKey(trace: RawTreeSandboxTraceSummary): string {
+  if (trace.sessionId) {
+    return `session:${trace.sessionId}`;
+  }
+
+  if (trace.sandboxName) {
+    return `sandbox:${trace.sandboxName}`;
+  }
+
+  return `trace:${trace.traceId}`;
+}
+
+function mergeSessionTraceSummary(
+  left: RawTreeSandboxTraceSummary,
+  right: RawTreeSandboxTraceSummary,
+): RawTreeSandboxTraceSummary {
+  const startedAt = minIso(left.startedAt, right.startedAt);
+  const lastSeenAt = maxIso(left.lastSeenAt, right.lastSeenAt);
+  const latestTrace =
+    compareIso(right.lastSeenAt, left.lastSeenAt) > 0 ? right : left;
+
+  return {
+    ...latestTrace,
+    aiSpanCount: left.aiSpanCount + right.aiSpanCount,
+    commandCount: left.commandCount + right.commandCount,
+    durationMs: getDurationMs(startedAt, lastSeenAt),
+    errorCount: left.errorCount + right.errorCount,
+    lastSeenAt,
+    matchedOrganizationDomain:
+      left.matchedOrganizationDomain || right.matchedOrganizationDomain,
+    repoName: latestTrace.repoName ?? left.repoName ?? right.repoName,
+    repoOwner: latestTrace.repoOwner ?? left.repoOwner ?? right.repoOwner,
+    sandboxCreateCount: left.sandboxCreateCount + right.sandboxCreateCount,
+    sandboxName:
+      latestTrace.sandboxName ?? left.sandboxName ?? right.sandboxName,
+    sessionId: latestTrace.sessionId ?? left.sessionId ?? right.sessionId,
+    sessionTitle:
+      latestTrace.sessionTitle ?? left.sessionTitle ?? right.sessionTitle,
+    spanCount: left.spanCount + right.spanCount,
+    spans: latestTrace.spans,
+    startedAt,
+    traceId: latestTrace.traceId,
+    userId: latestTrace.userId ?? left.userId ?? right.userId,
+    username: latestTrace.username ?? left.username ?? right.username,
+    workflowRunId:
+      latestTrace.workflowRunId ?? left.workflowRunId ?? right.workflowRunId,
+  };
+}
+
+function compareIso(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): number {
+  return (left ?? "").localeCompare(right ?? "");
+}
+
+function minIso(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): string | null {
+  if (!left) {
+    return right ?? null;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return left <= right ? left : right;
+}
+
+function maxIso(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): string | null {
+  if (!left) {
+    return right ?? null;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return left >= right ? left : right;
+}
+
+function getDurationMs(
+  startedAt: string | null,
+  lastSeenAt: string | null,
+): number {
+  if (!startedAt || !lastSeenAt) {
+    return 0;
+  }
+
+  return Math.max(
+    new Date(lastSeenAt).getTime() - new Date(startedAt).getTime(),
+    0,
+  );
+}

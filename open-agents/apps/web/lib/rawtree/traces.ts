@@ -46,6 +46,8 @@ export type RawTreeSandboxTraceSpan = {
 
 export interface RawTreeOrganizationSandboxTraceOptions {
   days?: number;
+  includeSessionProductTraces?: boolean;
+  limit?: number;
   range?: UsageDateRange;
   userIds?: string[];
 }
@@ -96,6 +98,7 @@ type TraceSpanAccumulator = {
 };
 
 const TRACE_QUERY_LIMIT = 5000;
+const DEFAULT_TRACE_SUMMARY_LIMIT = 20;
 const NANOS_PER_MS_NUMBER = 1_000_000;
 const NANOS_PER_MS = BigInt(NANOS_PER_MS_NUMBER);
 
@@ -247,7 +250,7 @@ function summarizeSandboxTraces(
         selectedUserIds.size === 0 ||
         [...trace.userIds].some((userId) => selectedUserIds.has(userId)),
     )
-    .filter((trace) => trace.hasSandboxActivity)
+    .filter((trace) => hasRequestedTraceActivity(trace, options))
     .filter((trace) => isInRange(trace.startNs, options?.range))
     .map((trace) => toTraceSummary(trace, normalizedDomain))
     .sort((left, right) => {
@@ -255,7 +258,22 @@ function summarizeSandboxTraces(
       const rightTime = right.lastSeenAt ?? "";
       return rightTime.localeCompare(leftTime);
     })
-    .slice(0, 20);
+    .slice(0, options?.limit ?? DEFAULT_TRACE_SUMMARY_LIMIT);
+}
+
+function hasRequestedTraceActivity(
+  trace: TraceAccumulator,
+  options: RawTreeOrganizationSandboxTraceOptions | undefined,
+): boolean {
+  if (trace.hasSandboxActivity) {
+    return true;
+  }
+
+  if (!options?.includeSessionProductTraces) {
+    return false;
+  }
+
+  return Boolean(trace.sessionId || trace.sandboxName || trace.sessionTitle);
 }
 
 function getTraceAccumulator(
