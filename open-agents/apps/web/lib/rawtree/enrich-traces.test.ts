@@ -119,6 +119,14 @@ describe("RawTree trace enrichment", () => {
         lastSeenAt: "2026-05-27T17:45:00.000Z",
         sessionId: "session-1",
         spanCount: 4,
+        spans: [
+          traceSpan({
+            name: "sandbox.command",
+            offsetMs: 0,
+            spanId: "latest-command",
+            startTime: "2026-05-27T17:44:30.000Z",
+          }),
+        ],
         startedAt: "2026-05-27T17:44:00.000Z",
         traceId: "latest-trace",
       }),
@@ -128,6 +136,14 @@ describe("RawTree trace enrichment", () => {
         lastSeenAt: "2026-05-27T17:43:30.000Z",
         sessionId: "session-1",
         spanCount: 3,
+        spans: [
+          traceSpan({
+            name: "ai.streamText",
+            offsetMs: 0,
+            spanId: "older-ai",
+            startTime: "2026-05-27T17:43:15.000Z",
+          }),
+        ],
         startedAt: "2026-05-27T17:43:00.000Z",
         traceId: "older-trace",
       }),
@@ -149,7 +165,26 @@ describe("RawTree trace enrichment", () => {
       spanCount: 7,
       startedAt: "2026-05-27T17:43:00.000Z",
       traceId: "latest-trace",
+      traceIds: ["latest-trace", "older-trace"],
     });
+    expect(
+      traces[0]?.spans.map(({ name, offsetMs, spanId }) => ({
+        name,
+        offsetMs,
+        spanId,
+      })),
+    ).toEqual([
+      {
+        name: "ai.streamText",
+        offsetMs: 15_000,
+        spanId: "older-ai",
+      },
+      {
+        name: "sandbox.command",
+        offsetMs: 90_000,
+        spanId: "latest-command",
+      },
+    ]);
   });
 });
 
@@ -176,6 +211,26 @@ function traceSummary(
     userId: null,
     username: null,
     workflowRunId: null,
+    ...overrides,
+  };
+}
+
+function traceSpan(
+  overrides: Partial<RawTreeSandboxTraceSummary["spans"][number]> = {},
+): RawTreeSandboxTraceSummary["spans"][number] {
+  return {
+    category: "sandbox",
+    depth: 0,
+    detail: null,
+    durationMs: 100,
+    endTime: "2026-05-27T17:43:15.100Z",
+    error: false,
+    name: "sandbox.command",
+    offsetMs: 0,
+    parentSpanId: null,
+    spanId: "span-1",
+    startTime: "2026-05-27T17:43:15.000Z",
+    statusCode: "OK",
     ...overrides,
   };
 }

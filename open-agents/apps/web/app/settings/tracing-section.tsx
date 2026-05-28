@@ -31,6 +31,7 @@ interface OrganizationSessionTrace {
   spans: OrganizationTraceSpan[];
   startedAt: string | null;
   traceId: string;
+  traceIds?: string[];
   userId: string | null;
   username: string | null;
   workflowRunId: string | null;
@@ -551,12 +552,12 @@ function TraceWaterfall({ trace }: { trace: OrganizationSessionTrace }) {
         </div>
       </div>
       <div className="max-h-[680px] min-w-[980px] overflow-y-auto">
-        {visibleSpans.map((span) => {
+        {visibleSpans.map((span, index) => {
           const childCount = childCounts.get(span.spanId) ?? 0;
           const collapsed = collapsedSpanIds.has(span.spanId);
           return (
             <TraceSpanRow
-              key={span.spanId}
+              key={`${span.spanId}-${span.startTime ?? index}`}
               childCount={childCount}
               collapsed={collapsed}
               durationMs={durationMs}
@@ -613,7 +614,13 @@ export function TracingSectionSkeleton() {
   );
 }
 
-export function TracingSection({ traceId }: { traceId: string | null }) {
+export function TracingSection({
+  sessionId,
+  traceId,
+}: {
+  sessionId: string | null;
+  traceId: string | null;
+}) {
   const router = useRouter();
   const { data, error, isLoading } = useSWR<OrganizationTracingResponse>(
     TRACING_PATH,
@@ -622,15 +629,13 @@ export function TracingSection({ traceId }: { traceId: string | null }) {
   const organization = data?.organization ?? null;
   const traces = organization?.traces ?? EMPTY_TRACES;
   const selectedTrace = useMemo(
-    () =>
-      traceId
-        ? (traces.find((trace) => trace.traceId === traceId) ?? null)
-        : (traces[0] ?? null),
-    [traceId, traces],
+    () => findSelectedTrace(traces, { sessionId, traceId }),
+    [sessionId, traceId, traces],
   );
 
   function navigateToTrace(nextTraceId: string) {
-    router.push(`/settings/tracing?traceId=${encodeURIComponent(nextTraceId)}`);
+    const nextTrace = traces.find((trace) => trace.traceId === nextTraceId);
+    router.push(getTraceHref(nextTrace ?? { traceId: nextTraceId }));
   }
 
   function navigateToRepo(repoKey: string) {
@@ -668,4 +673,39 @@ export function TracingSection({ traceId }: { traceId: string | null }) {
       onSelectTrace={navigateToTrace}
     />
   );
+}
+
+function findSelectedTrace(
+  traces: OrganizationSessionTrace[],
+  selection: { sessionId: string | null; traceId: string | null },
+): OrganizationSessionTrace | null {
+  if (selection.sessionId) {
+    const selectedBySession = traces.find(
+      (trace) => trace.sessionId === selection.sessionId,
+    );
+    if (selectedBySession) {
+      return selectedBySession;
+    }
+  }
+
+  if (selection.traceId) {
+    const selectedByTrace = traces.find(
+      (trace) =>
+        trace.traceId === selection.traceId ||
+        trace.traceIds?.includes(selection.traceId ?? "") === true,
+    );
+    if (selectedByTrace) {
+      return selectedByTrace;
+    }
+  }
+
+  return traces[0] ?? null;
+}
+
+function getTraceHref(trace: { sessionId?: string | null; traceId: string }) {
+  if (trace.sessionId) {
+    return `/settings/tracing?sessionId=${encodeURIComponent(trace.sessionId)}`;
+  }
+
+  return `/settings/tracing?traceId=${encodeURIComponent(trace.traceId)}`;
 }

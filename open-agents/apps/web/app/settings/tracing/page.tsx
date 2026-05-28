@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 
 type TracingPageProps = {
   searchParams: Promise<{
+    sessionId?: string | string[];
     traceId?: string | string[];
   }>;
 };
@@ -22,6 +23,7 @@ function firstSearchParam(value: string | string[] | undefined): string | null {
 
 export default async function TracingPage({ searchParams }: TracingPageProps) {
   const params = await searchParams;
+  const sessionId = firstSearchParam(params.sessionId);
   const traceId = firstSearchParam(params.traceId);
 
   return (
@@ -34,7 +36,7 @@ export default async function TracingPage({ searchParams }: TracingPageProps) {
         </p>
       </div>
 
-      <TracingSection traceId={traceId} />
+      <TracingSection sessionId={sessionId} traceId={traceId} />
     </div>
   );
 }

@@ -123,14 +123,37 @@ function mergeSessionTraceSummary(
     sessionTitle:
       latestTrace.sessionTitle ?? left.sessionTitle ?? right.sessionTitle,
     spanCount: left.spanCount + right.spanCount,
-    spans: latestTrace.spans,
+    spans: mergeSessionTraceSpans(left.spans, right.spans, startedAt),
     startedAt,
     traceId: latestTrace.traceId,
+    traceIds: uniqueStrings([
+      ...(left.traceIds ?? [left.traceId]),
+      ...(right.traceIds ?? [right.traceId]),
+    ]),
     userId: latestTrace.userId ?? left.userId ?? right.userId,
     username: latestTrace.username ?? left.username ?? right.username,
     workflowRunId:
       latestTrace.workflowRunId ?? left.workflowRunId ?? right.workflowRunId,
   };
+}
+
+function mergeSessionTraceSpans(
+  left: RawTreeSandboxTraceSummary["spans"],
+  right: RawTreeSandboxTraceSummary["spans"],
+  sessionStartedAt: string | null,
+): RawTreeSandboxTraceSummary["spans"] {
+  return [...left, ...right]
+    .sort((leftSpan, rightSpan) =>
+      compareIso(leftSpan.startTime, rightSpan.startTime),
+    )
+    .map((span) => ({
+      ...span,
+      offsetMs: getDurationMs(sessionStartedAt, span.startTime),
+    }));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function compareIso(

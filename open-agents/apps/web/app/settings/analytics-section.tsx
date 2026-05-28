@@ -222,6 +222,14 @@ function getRepoLabel(trace: OrganizationSessionTrace): string {
     : "No repo";
 }
 
+function getTracingHref(trace: OrganizationSessionTrace): string {
+  if (trace.sessionId) {
+    return `/settings/tracing?sessionId=${encodeURIComponent(trace.sessionId)}`;
+  }
+
+  return `/settings/tracing?traceId=${encodeURIComponent(trace.traceId)}`;
+}
+
 export function AnalyticsSectionSkeleton() {
   return (
     <div className="space-y-6">
@@ -511,8 +519,8 @@ function SessionTracesSection({
               <div className="divide-y divide-border/40">
                 {traces.map((trace) => (
                   <Link
-                    key={trace.traceId}
-                    href={`/settings/tracing?traceId=${encodeURIComponent(trace.traceId)}`}
+                    key={trace.sessionId ?? trace.traceId}
+                    href={getTracingHref(trace)}
                     className="grid grid-cols-[150px_minmax(220px,1.35fr)_minmax(180px,1fr)_90px_90px_80px_80px_90px] items-center px-4 py-3 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="font-mono text-xs text-muted-foreground">

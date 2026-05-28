@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 import { parseUsageQueryRange } from "@/app/api/usage/_lib/query-range";
-import { enrichSandboxTracesWithSessionMetadata } from "@/lib/rawtree/enrich-traces";
+import {
+  enrichSandboxTracesWithSessionMetadata,
+  summarizeSandboxTracesBySession,
+} from "@/lib/rawtree/enrich-traces";
 import { getRawTreeOrganizationSandboxTraces } from "@/lib/rawtree/traces";
 import { getAllowedOrganizationEmailDomain } from "@/lib/auth/allowed-email-domains";
 import { getSessionFromReq } from "@/lib/session/server";
@@ -30,9 +33,9 @@ export async function GET(req: NextRequest) {
       includeSessionProductTraces: true,
       limit: 500,
     });
-    const traces = await enrichSandboxTracesWithSessionMetadata(
-      domain,
-      rawTraces,
+    const traces = summarizeSandboxTracesBySession(
+      await enrichSandboxTracesWithSessionMetadata(domain, rawTraces),
+      100,
     );
 
     return Response.json({

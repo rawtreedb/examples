@@ -24,6 +24,7 @@ export type RawTreeSandboxTraceSummary = {
   spans: RawTreeSandboxTraceSpan[];
   startedAt: string | null;
   traceId: string;
+  traceIds?: string[];
   userId: string | null;
   username: string | null;
   workflowRunId: string | null;
@@ -337,6 +338,7 @@ function toTraceSummary(
     spans,
     startedAt: nanosToIso(trace.startNs),
     traceId: trace.traceId,
+    traceIds: [trace.traceId],
     userId: trace.userId,
     username: trace.username,
     workflowRunId: trace.workflowRunId,
