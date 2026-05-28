@@ -49,7 +49,7 @@ import { useSession } from "@/hooks/use-session";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { formatRelativeTime } from "@/lib/format-relative-time";
-import { getUsageLeaderboardDomain } from "@/lib/usage/leaderboard-domain";
+import { getAllowedOrganizationEmailDomain } from "@/lib/auth/allowed-email-domains";
 
 type InboxSidebarProps = {
   sessions: SessionWithUnread[];
@@ -1237,7 +1237,7 @@ export function InboxSidebar({
                   in {formatDomainOrg(leaderboardRank.domain)}
                 </Link>
               ) : leaderboardLoading &&
-                getUsageLeaderboardDomain(sidebarUser.email) ? (
+                getAllowedOrganizationEmailDomain(sidebarUser.email) ? (
                 <span className="mt-1 block h-4 w-24 animate-pulse rounded bg-muted" />
               ) : null}
             </div>

@@ -7,20 +7,10 @@ import {
 import { enrichSandboxTracesWithSessionMetadata } from "@/lib/rawtree/enrich-traces";
 import { getRawTreeOrganizationSandboxTraces } from "@/lib/rawtree/traces";
 import { getOrganizationRepositoryEdits } from "@/lib/db/organization-analytics";
+import { getAllowedOrganizationEmailDomain } from "@/lib/auth/allowed-email-domains";
 import { getSessionFromReq } from "@/lib/session/server";
-import { getUsageLeaderboardDomain } from "@/lib/usage/leaderboard-domain";
 
-const MAX_SELECTED_USERS = 50;
-
-function parseSelectedUserIds(req: NextRequest): string[] {
-  const values = req.nextUrl.searchParams
-    .getAll("userId")
-    .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  return [...new Set(values)].slice(0, MAX_SELECTED_USERS);
-}
+const DEFAULT_ACTIVITY_LOOKBACK_DAYS = 365;
 
 /**
  * GET /api/analytics/organization — RawTree-backed organization usage analytics.
@@ -31,7 +21,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const domain = getUsageLeaderboardDomain(session.user.email);
+  const domain = getAllowedOrganizationEmailDomain(session.user.email);
   if (!domain) {
     return Response.json({ organization: null });
   }
@@ -42,22 +32,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const users = await getRawTreeOrganizationUsageUsers(domain);
     const rangeOptions = rangeResult.range
       ? { range: rangeResult.range }
-      : undefined;
-    const allowedUserIds = new Set(users.map((user) => user.userId));
-    const selectedUserIds = parseSelectedUserIds(req).filter((userId) =>
-      allowedUserIds.has(userId),
-    );
-    const queryOptions = {
-      ...rangeOptions,
-      ...(selectedUserIds.length > 0 ? { userIds: selectedUserIds } : {}),
-    };
-    const [usage, repositories, rawSandboxTraces] = await Promise.all([
-      getRawTreeOrganizationUsageDays(domain, queryOptions),
-      getOrganizationRepositoryEdits(domain, queryOptions),
-      getRawTreeOrganizationSandboxTraces(domain, queryOptions),
+      : { days: DEFAULT_ACTIVITY_LOOKBACK_DAYS };
+    const [users, usage, repositories, rawSandboxTraces] = await Promise.all([
+      getRawTreeOrganizationUsageUsers(domain, rangeOptions),
+      getRawTreeOrganizationUsageDays(domain, rangeOptions),
+      getOrganizationRepositoryEdits(domain, rangeOptions),
+      getRawTreeOrganizationSandboxTraces(domain, rangeOptions),
     ]);
     const sandboxTraces = await enrichSandboxTracesWithSessionMetadata(
       domain,
@@ -69,7 +51,6 @@ export async function GET(req: NextRequest) {
         domain,
         repositories,
         sandboxTraces,
-        selectedUserIds,
         source: "rawtree",
         usage,
         users,

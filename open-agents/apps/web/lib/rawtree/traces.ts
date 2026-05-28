@@ -44,6 +44,7 @@ export type RawTreeSandboxTraceSpan = {
 };
 
 export interface RawTreeOrganizationSandboxTraceOptions {
+  days?: number;
   range?: UsageDateRange;
   userIds?: string[];
 }

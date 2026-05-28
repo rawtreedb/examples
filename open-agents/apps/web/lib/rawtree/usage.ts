@@ -86,6 +86,7 @@ type RawTreeUsageDomainLeaderboardRawRow = {
 };
 
 type RawTreeOrganizationUsageDayRow = {
+  activeUserCount: number | string | null;
   cachedInputTokens: number | string | null;
   date: string;
   inputTokens: number | string | null;
@@ -105,6 +106,7 @@ type RawTreeOrganizationUsageUserRow = {
 };
 
 export type RawTreeOrganizationUsageDay = {
+  activeUserCount: number;
   cachedInputTokens: number;
   date: string;
   inputTokens: number;
@@ -124,6 +126,7 @@ export type RawTreeOrganizationUsageUser = {
 };
 
 export interface RawTreeOrganizationUsageOptions {
+  days?: number;
   range?: UsageDateRange;
   userIds?: string[];
 }
@@ -148,6 +151,7 @@ export async function recordRawTreeUsageEvent(
 
 export async function getRawTreeOrganizationUsageUsers(
   domain: string,
+  options?: RawTreeOrganizationUsageOptions,
 ): Promise<RawTreeOrganizationUsageUser[]> {
   const rows = await queryRawTree<RawTreeOrganizationUsageUserRow>(`
       SELECT
@@ -159,7 +163,7 @@ export async function getRawTreeOrganizationUsageUsers(
         sum(${numberExpression("inputTokens")} + ${numberExpression("outputTokens")}) AS totalTokens,
         sum(if(${stringExpression("agentType")} = 'main', 1, 0)) AS messageCount
       FROM ${usageTable()}
-      WHERE ${buildDomainUsageWhereClause(domain)}
+      WHERE ${buildDomainUsageWhereClause(domain, options)}
       GROUP BY userIdValue
       ORDER BY totalTokens DESC, usernameValue ASC
     `);
@@ -186,7 +190,8 @@ export async function getRawTreeOrganizationUsageDays(
         sum(${numberExpression("cachedInputTokens")}) AS cachedInputTokens,
         sum(${numberExpression("outputTokens")}) AS outputTokens,
         sum(if(${stringExpression("agentType")} = 'main', 1, 0)) AS messageCount,
-        sum(${numberExpression("toolCallCount")}) AS toolCallCount
+        sum(${numberExpression("toolCallCount")}) AS toolCallCount,
+        uniqExact(${stringExpression("userId")}) AS activeUserCount
       FROM ${usageTable()}
       WHERE ${buildOrganizationUsageWhereClause(domain, options)}
       GROUP BY date
@@ -194,6 +199,7 @@ export async function getRawTreeOrganizationUsageDays(
     `);
 
   return rows.map((row) => ({
+    activeUserCount: numberValue(row.activeUserCount),
     cachedInputTokens: numberValue(row.cachedInputTokens),
     date: row.date,
     inputTokens: numberValue(row.inputTokens),

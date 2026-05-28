@@ -6,7 +6,6 @@ import { useMemo, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import useSWR from "swr";
 import { ContributionChart } from "@/components/contribution-chart";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,6 +31,7 @@ import {
 } from "./leaderboard-section";
 
 interface OrganizationUsageDay {
+  activeUserCount: number;
   cachedInputTokens: number;
   date: string;
   inputTokens: number;
@@ -84,7 +84,6 @@ interface OrganizationAnalytics {
   domain: string;
   repositories: OrganizationRepositoryInsight[];
   sandboxTraces: OrganizationSessionTrace[];
-  selectedUserIds: string[];
   source: "rawtree";
   usage: OrganizationUsageDay[];
   users: OrganizationUsageUser[];
@@ -95,15 +94,10 @@ interface OrganizationAnalyticsResponse {
 }
 
 const EMPTY_USAGE: OrganizationUsageDay[] = [];
+const ACTIVITY_CHART_WEEKS = 53;
 
-function buildAnalyticsPath(
-  userIds: string[],
-  range: DateRange | undefined,
-): string {
+function buildAnalyticsPath(range: DateRange | undefined): string {
   const query = new URLSearchParams();
-  for (const userId of userIds) {
-    query.append("userId", userId);
-  }
 
   if (range?.from) {
     query.set("from", formatDateOnly(range.from));
@@ -118,7 +112,7 @@ function buildAnalyticsPath(
 
 function formatDateRangeLabel(range: DateRange | undefined): string {
   if (!range?.from) {
-    return "Organization activity over the past 39 weeks.";
+    return "activity over the past year.";
   }
 
   const fromLabel = range.from.toLocaleDateString("en-US", {
@@ -134,18 +128,8 @@ function formatDateRangeLabel(range: DateRange | undefined): string {
   });
 
   return fromLabel === toLabel
-    ? `Showing ${fromLabel}.`
-    : `Showing ${fromLabel} to ${toLabel}.`;
-}
-
-function getInitials(user: OrganizationUsageUser): string {
-  const label = user.name || user.username || user.userId;
-  return label
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+    ? `showing ${fromLabel}.`
+    : `showing ${fromLabel} to ${toLabel}.`;
 }
 
 function sumRows(rows: OrganizationUsageDay[]) {
@@ -198,6 +182,13 @@ function formatDuration(durationMs: number): string {
   }
 
   return `${(durationMs / 60_000).toFixed(1)}m`;
+}
+
+function formatShortDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function getSessionLabel(trace: OrganizationSessionTrace): string {
@@ -292,76 +283,182 @@ function StatBlock({
   );
 }
 
-function UserFilter({
-  selectedUserIds,
-  users,
-  onChange,
-}: {
-  selectedUserIds: string[];
-  users: OrganizationUsageUser[];
-  onChange: (nextUserIds: string[]) => void;
-}) {
-  const selected = new Set(selectedUserIds);
+function getActiveUserChartPath(
+  rows: OrganizationUsageDay[],
+  width: number,
+  height: number,
+  padding: { bottom: number; left: number; right: number; top: number },
+): string {
+  const maxUsers = Math.max(...rows.map((row) => row.activeUserCount), 1);
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
 
-  function toggleUser(userId: string) {
-    const next = new Set(selected);
-    if (next.has(userId)) {
-      next.delete(userId);
-    } else {
-      next.add(userId);
-    }
-    onChange([...next]);
-  }
+  return rows
+    .map((row, index) => {
+      const x =
+        padding.left +
+        (rows.length === 1
+          ? plotWidth
+          : (index / (rows.length - 1)) * plotWidth);
+      const y =
+        padding.top +
+        plotHeight -
+        (row.activeUserCount / maxUsers) * plotHeight;
+
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
+
+function ActiveUsersSection({ usage }: { usage: OrganizationUsageDay[] }) {
+  const rows = usage.filter((row) => row.activeUserCount > 0);
+  const maxUsers = Math.max(...rows.map((row) => row.activeUserCount), 0);
+  const latest = rows.at(-1);
+  const first = rows[0];
+  const width = 640;
+  const height = 180;
+  const padding = { bottom: 26, left: 34, right: 18, top: 18 };
+  const path =
+    rows.length > 0 ? getActiveUserChartPath(rows, width, height, padding) : "";
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium">Users</h3>
-        {selectedUserIds.length > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="px-0 text-muted-foreground"
-            onClick={() => onChange([])}
-          >
-            Clear filter
-          </Button>
-        ) : null}
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {users.map((user) => {
-          const isSelected = selected.has(user.userId);
-          return (
-            <label
-              key={user.userId}
-              className="flex min-w-0 items-center gap-3 rounded-md border border-border/50 bg-muted/10 px-3 py-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                className="size-4 shrink-0 accent-foreground"
-                checked={isSelected}
-                onChange={() => toggleUser(user.userId)}
+    <Card>
+      <CardHeader>
+        <CardTitle>Active users</CardTitle>
+        <CardDescription>
+          Daily active users in the selected activity window.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No active users in this period.
+          </p>
+        ) : (
+          <div className="rounded-lg border border-border/50 bg-muted/10 p-4">
+            <div className="mb-3 grid gap-3 min-[420px]:grid-cols-3">
+              <StatBlock
+                label="Latest"
+                value={(latest?.activeUserCount ?? 0).toLocaleString()}
+                detail={latest ? formatShortDate(latest.date) : undefined}
               />
-              <Avatar className="size-8 text-xs">
-                {user.avatarUrl ? (
-                  <AvatarImage src={user.avatarUrl} alt={user.username} />
-                ) : null}
-                <AvatarFallback>{getInitials(user)}</AvatarFallback>
-              </Avatar>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">
-                  {user.name || user.username}
-                </span>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {formatTokens(user.totalTokens)} tokens
-                </span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
+              <StatBlock
+                label="Peak"
+                value={maxUsers.toLocaleString()}
+                detail="Daily active users"
+              />
+              <StatBlock
+                label="Active days"
+                value={rows.length.toLocaleString()}
+                detail={
+                  first && latest
+                    ? `${formatShortDate(first.date)} to ${formatShortDate(latest.date)}`
+                    : undefined
+                }
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <svg
+                aria-label="Daily active users line chart"
+                className="h-48 min-w-[560px] w-full"
+                preserveAspectRatio="none"
+                role="img"
+                viewBox={`0 0 ${width} ${height}`}
+              >
+                <line
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={height - padding.bottom}
+                  y2={height - padding.bottom}
+                  className="stroke-border"
+                />
+                <line
+                  x1={padding.left}
+                  x2={padding.left}
+                  y1={padding.top}
+                  y2={height - padding.bottom}
+                  className="stroke-border"
+                />
+                {[0.25, 0.5, 0.75, 1].map((tick) => {
+                  const y =
+                    padding.top +
+                    (height - padding.top - padding.bottom) * (1 - tick);
+                  return (
+                    <line
+                      key={tick}
+                      x1={padding.left}
+                      x2={width - padding.right}
+                      y1={y}
+                      y2={y}
+                      className="stroke-border/60"
+                      strokeDasharray="4 6"
+                    />
+                  );
+                })}
+                <path
+                  d={path}
+                  className="fill-none stroke-foreground"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2.5"
+                />
+                {rows.map((row, index) => {
+                  const plotWidth = width - padding.left - padding.right;
+                  const plotHeight = height - padding.top - padding.bottom;
+                  const x =
+                    padding.left +
+                    (rows.length === 1
+                      ? plotWidth
+                      : (index / (rows.length - 1)) * plotWidth);
+                  const y =
+                    padding.top +
+                    plotHeight -
+                    (row.activeUserCount / Math.max(maxUsers, 1)) * plotHeight;
+
+                  return (
+                    <circle
+                      key={row.date}
+                      cx={x}
+                      cy={y}
+                      r={index === rows.length - 1 ? 4 : 2.5}
+                      className="fill-background stroke-foreground"
+                      strokeWidth="2"
+                    >
+                      <title>
+                        {formatShortDate(row.date)}:{" "}
+                        {row.activeUserCount.toLocaleString()} active users
+                      </title>
+                    </circle>
+                  );
+                })}
+                <text
+                  x={padding.left}
+                  y={height - 6}
+                  className="fill-muted-foreground text-[11px]"
+                >
+                  {first ? formatShortDate(first.date) : ""}
+                </text>
+                <text
+                  textAnchor="end"
+                  x={width - padding.right}
+                  y={height - 6}
+                  className="fill-muted-foreground text-[11px]"
+                >
+                  {latest ? formatShortDate(latest.date) : ""}
+                </text>
+                <text
+                  x={4}
+                  y={padding.top + 4}
+                  className="fill-muted-foreground text-[11px]"
+                >
+                  {maxUsers.toLocaleString()}
+                </text>
+              </svg>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -373,7 +470,7 @@ function RepositoryEditsSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI Edits by Repository</CardTitle>
+        <CardTitle>Edits by Repository</CardTitle>
         <CardDescription>
           Ranked by lines changed across organization sessions.
         </CardDescription>
@@ -513,17 +610,12 @@ function SessionTracesSection({
 }
 
 export function AnalyticsSection() {
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-  const fullPath = useMemo(
-    () => buildAnalyticsPath(selectedUserIds, undefined),
-    [selectedUserIds],
-  );
+  const fullPath = useMemo(() => buildAnalyticsPath(undefined), []);
   const filteredPath = useMemo(
-    () =>
-      dateRange?.from ? buildAnalyticsPath(selectedUserIds, dateRange) : null,
-    [dateRange, selectedUserIds],
+    () => (dateRange?.from ? buildAnalyticsPath(dateRange) : null),
+    [dateRange],
   );
 
   const {
@@ -552,10 +644,7 @@ export function AnalyticsSection() {
 
   const totals = useMemo(() => sumRows(activeUsage), [activeUsage]);
   const totalTokens = totals.inputTokens + totals.outputTokens;
-  const selectedUserCount =
-    selectedUserIds.length > 0
-      ? selectedUserIds.length
-      : (organization?.users.length ?? 0);
+  const userCount = organization?.users.length ?? 0;
   if (isLoading) {
     return <AnalyticsSectionSkeleton />;
   }
@@ -564,11 +653,11 @@ export function AnalyticsSection() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Organization analytics</CardTitle>
+          <CardTitle>Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Failed to load organization analytics.
+            Failed to load activity.
           </p>
         </CardContent>
       </Card>
@@ -579,12 +668,11 @@ export function AnalyticsSection() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Organization analytics</CardTitle>
+          <CardTitle>Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Organization analytics are available for verified organization email
-            domains.
+            Activity is available for verified organization email domains.
           </p>
         </CardContent>
       </Card>
@@ -597,9 +685,9 @@ export function AnalyticsSection() {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
-              <CardTitle>Organization analytics</CardTitle>
+              <CardTitle>Activity</CardTitle>
               <CardDescription>
-                @{organization.domain} · {formatDateRangeLabel(dateRange)}
+                @{organization.domain} {formatDateRangeLabel(dateRange)}
               </CardDescription>
             </div>
             {dateRange?.from ? (
@@ -628,12 +716,8 @@ export function AnalyticsSection() {
             />
             <StatBlock
               label="Users"
-              value={selectedUserCount.toLocaleString()}
-              detail={
-                selectedUserIds.length > 0
-                  ? "Selected users"
-                  : "Active organization users"
-              }
+              value={userCount.toLocaleString()}
+              detail="Active organization users"
             />
           </div>
 
@@ -641,26 +725,13 @@ export function AnalyticsSection() {
             data={chartUsage}
             selectedRange={dateRange}
             onSelectRange={setDateRange}
+            weeks={ACTIVITY_CHART_WEEKS}
           />
-
-          {organization.users.length > 0 ? (
-            <UserFilter
-              selectedUserIds={selectedUserIds}
-              users={organization.users}
-              onChange={(nextUserIds) => {
-                setSelectedUserIds(nextUserIds);
-                setDateRange(undefined);
-              }}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No organization users have usage in this period.
-            </p>
-          )}
         </CardContent>
       </Card>
+      <ActiveUsersSection usage={activeUsage} />
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <LeaderboardSection />
         </CardContent>
       </Card>

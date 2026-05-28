@@ -15,16 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
-interface OrganizationTracingUser {
-  avatarUrl: string | null;
-  lastSeenAt: string | null;
-  messageCount: number;
-  name: string | null;
-  totalTokens: number;
-  userId: string;
-  username: string;
-}
-
 interface OrganizationSessionTrace {
   aiSpanCount: number;
   commandCount: number;
@@ -63,10 +53,8 @@ interface OrganizationTraceSpan {
 
 interface OrganizationTracing {
   domain: string;
-  selectedUserIds: string[];
   source: "rawtree";
   traces: OrganizationSessionTrace[];
-  users: OrganizationTracingUser[];
 }
 
 interface OrganizationTracingResponse {

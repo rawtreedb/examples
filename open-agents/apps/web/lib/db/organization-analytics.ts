@@ -5,6 +5,7 @@ import { db } from "./client";
 import { sessions, users } from "./schema";
 
 export interface OrganizationRepositoryEditsOptions {
+  days?: number;
   range?: UsageDateRange;
   userIds?: string[];
 }
@@ -24,8 +25,9 @@ function buildOrganizationRepositoryWhereClause(
     conditions.push(sql`date(${sessions.updatedAt}) >= ${options.range.from}`);
     conditions.push(sql`date(${sessions.updatedAt}) <= ${options.range.to}`);
   } else {
+    const days = options?.days ?? 280;
     const since = new Date();
-    since.setUTCDate(since.getUTCDate() - 280);
+    since.setUTCDate(since.getUTCDate() - days);
     conditions.push(sql`${sessions.updatedAt} >= ${since.toISOString()}`);
   }
 

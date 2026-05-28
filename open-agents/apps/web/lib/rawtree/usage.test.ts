@@ -176,9 +176,13 @@ describe("RawTree usage storage", () => {
       expect(sql).toContain(
         "sum(coalesce(dynamicElement(toolCallCount, 'Float64'), toFloat64(dynamicElement(toolCallCount, 'Int64')), toFloat64(dynamicElement(toolCallCount, 'UInt64')), 0)) AS toolCallCount",
       );
+      expect(sql).toContain(
+        "uniqExact(dynamicElement(userId, 'String')) AS activeUserCount",
+      );
       expect(sql).not.toContain("__raw_data");
       return [
         {
+          activeUserCount: "2",
           cachedInputTokens: "1",
           date: "2026-05-26",
           inputTokens: "10",
@@ -196,6 +200,7 @@ describe("RawTree usage storage", () => {
 
     expect(rows).toEqual([
       {
+        activeUserCount: 2,
         cachedInputTokens: 1,
         date: "2026-05-26",
         inputTokens: 10,

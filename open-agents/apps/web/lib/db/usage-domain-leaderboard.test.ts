@@ -1,39 +1,50 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
-  buildUsageDomainLeaderboardRows,
-  getUsageLeaderboardDomain,
-} from "./usage-domain-leaderboard";
+  getAllowedOrganizationEmailDomain,
+  isEmailAllowedToAuthenticate,
+} from "@/lib/auth/allowed-email-domains";
+import { buildUsageDomainLeaderboardRows } from "./usage-domain-leaderboard";
 
-const originalLeaderboardDomains = process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS;
+const originalAllowedDomains = process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS;
 
-describe("getUsageLeaderboardDomain", () => {
+describe("allowed email domains", () => {
   afterEach(() => {
-    if (originalLeaderboardDomains === undefined) {
-      delete process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS;
+    if (originalAllowedDomains === undefined) {
+      delete process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS;
     } else {
-      process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = originalLeaderboardDomains;
+      process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS = originalAllowedDomains;
     }
   });
 
-  test("accepts verified internal domains", () => {
-    expect(getUsageLeaderboardDomain("Alice@Vercel.com")).toBe("vercel.com");
+  test("allows authentication when no domain restriction is configured", () => {
+    delete process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS;
+
+    expect(isEmailAllowedToAuthenticate("alice@example.com")).toBe(true);
+    expect(getAllowedOrganizationEmailDomain("alice@example.com")).toBeNull();
   });
 
   test("accepts configured organization domains", () => {
-    process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = "tinybird.co, rawtree.com";
+    process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS = "tinybird.co, rawtree.com";
 
-    expect(getUsageLeaderboardDomain("alice@tinybird.co")).toBe("tinybird.co");
-    expect(getUsageLeaderboardDomain("bob@rawtree.com")).toBe("rawtree.com");
+    expect(isEmailAllowedToAuthenticate("alice@tinybird.co")).toBe(true);
+    expect(getAllowedOrganizationEmailDomain("alice@tinybird.co")).toBe(
+      "tinybird.co",
+    );
+    expect(getAllowedOrganizationEmailDomain("bob@rawtree.com")).toBe(
+      "rawtree.com",
+    );
   });
 
   test("rejects personal and unverified domains", () => {
-    process.env.OPEN_AGENTS_LEADERBOARD_DOMAINS = "gmail.com";
+    process.env.OPEN_AGENTS_ALLOWED_EMAIL_DOMAINS = "tinybird.co,gmail.com";
 
-    expect(getUsageLeaderboardDomain("alice@gmail.com")).toBeNull();
-    expect(getUsageLeaderboardDomain("alice@hotmail.com")).toBeNull();
-    expect(getUsageLeaderboardDomain("alice@example.com")).toBeNull();
-    expect(getUsageLeaderboardDomain("missing-at-symbol")).toBeNull();
-    expect(getUsageLeaderboardDomain(undefined)).toBeNull();
+    expect(isEmailAllowedToAuthenticate("alice@gmail.com")).toBe(false);
+    expect(isEmailAllowedToAuthenticate("alice@hotmail.com")).toBe(false);
+    expect(isEmailAllowedToAuthenticate("alice@example.com")).toBe(false);
+    expect(isEmailAllowedToAuthenticate("missing-at-symbol")).toBe(false);
+    expect(isEmailAllowedToAuthenticate(undefined)).toBe(false);
+    expect(getAllowedOrganizationEmailDomain("alice@gmail.com")).toBeNull();
+    expect(getAllowedOrganizationEmailDomain("alice@example.com")).toBeNull();
   });
 });
 

@@ -1,12 +1,12 @@
 import type { UsageDateRange } from "@/lib/usage/date-range";
 import { getRawTreeUsageDomainLeaderboardRows } from "@/lib/rawtree/usage";
-import { getUsageLeaderboardDomain } from "@/lib/usage/leaderboard-domain";
+import { getAllowedOrganizationEmailDomain } from "@/lib/auth/allowed-email-domains";
 import type {
   UsageDomainLeaderboard,
   UsageDomainLeaderboardRow,
 } from "@/lib/usage/types";
 
-export { getUsageLeaderboardDomain };
+export { getAllowedOrganizationEmailDomain };
 
 export interface UsageDomainLeaderboardQueryRow {
   userId: string;
@@ -116,7 +116,7 @@ export async function getUsageDomainLeaderboard(
   email: string | null | undefined,
   options?: UsageDomainLeaderboardOptions,
 ): Promise<UsageDomainLeaderboard | null> {
-  const domain = getUsageLeaderboardDomain(email);
+  const domain = getAllowedOrganizationEmailDomain(email);
   if (!domain) {
     return null;
   }

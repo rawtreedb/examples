@@ -1,10 +1,11 @@
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type {
   GithubProfile,
   VercelProfile,
 } from "better-auth/social-providers";
 import { nanoid } from "nanoid";
+import { isEmailAllowedToAuthenticate } from "@/lib/auth/allowed-email-domains";
 import { deriveAuthUsername } from "@/lib/auth/username";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
@@ -95,6 +96,19 @@ function mapGitHubProfileToUser(profile: GithubProfile): { username: string } {
 const authBaseURLFallback = getAuthBaseURLFallback();
 const authAllowedHosts = getAllowedAuthHosts();
 
+function assertEmailAllowedToAuthenticate(
+  email: string | null | undefined,
+): void {
+  if (isEmailAllowedToAuthenticate(email)) {
+    return;
+  }
+
+  throw APIError.from("FORBIDDEN", {
+    code: "EMAIL_DOMAIN_NOT_ALLOWED",
+    message: "This email domain is not allowed to access this app.",
+  });
+}
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: {
@@ -126,11 +140,29 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        before: async (user) => ({
-          data: {
-            username: deriveAuthUsername(user),
-          },
-        }),
+        before: async (user) => {
+          assertEmailAllowedToAuthenticate(user.email);
+
+          return {
+            data: {
+              username: deriveAuthUsername(user),
+            },
+          };
+        },
+      },
+    },
+    session: {
+      create: {
+        before: async (session, ctx) => {
+          if (!ctx) {
+            return;
+          }
+
+          const user = await ctx.context.internalAdapter.findUserById(
+            session.userId,
+          );
+          assertEmailAllowedToAuthenticate(user?.email);
+        },
       },
     },
   },

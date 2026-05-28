@@ -4,6 +4,7 @@ import { formatTokens } from "@open-agents/shared";
 import { useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -63,10 +64,8 @@ function displayModelId(modelId: string | null): string {
 export function LeaderboardSectionSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Internal leaderboard
-        </h3>
+      <div className="space-y-2">
+        <CardTitle>Internal leaderboard</CardTitle>
         <Skeleton className="h-4 w-64" />
       </div>
       <div className="space-y-3">
@@ -136,10 +135,8 @@ export function LeaderboardSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Internal leaderboard
-          </h3>
+        <div className="space-y-2">
+          <CardTitle>Internal leaderboard</CardTitle>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">
@@ -153,10 +150,8 @@ export function LeaderboardSection() {
   if (!leaderboard) {
     return (
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Internal leaderboard
-          </h3>
+        <div className="space-y-2">
+          <CardTitle>Internal leaderboard</CardTitle>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">
@@ -171,13 +166,11 @@ export function LeaderboardSection() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Internal leaderboard
-          </h3>
-          <p className="text-sm text-muted-foreground">
+        <div className="space-y-2">
+          <CardTitle>Internal leaderboard</CardTitle>
+          <CardDescription>
             Ranked by total tokens for users with @{leaderboard.domain}.
-          </p>
+          </CardDescription>
         </div>
         <RangeFilter value={range} onChange={setRange} />
       </div>

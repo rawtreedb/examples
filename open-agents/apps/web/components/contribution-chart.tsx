@@ -22,10 +22,11 @@ interface ContributionChartProps {
   data: DayData[];
   selectedRange?: DateRange;
   onSelectRange?: (range: DateRange | undefined) => void;
+  weeks?: number;
 }
 
 const DAYS_IN_WEEK = 7;
-const WEEKS = 39;
+const DEFAULT_WEEKS = 39;
 
 function getIntensity(
   value: number,
@@ -83,6 +84,7 @@ export function ContributionChart({
   data,
   selectedRange,
   onSelectRange,
+  weeks = DEFAULT_WEEKS,
 }: ContributionChartProps) {
   const { grid, selectedBounds, thresholds } = useMemo(() => {
     const dataMap = new Map<string, DayData>();
@@ -96,7 +98,7 @@ export function ContributionChart({
     const endDate = new Date(today);
     endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
     const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - WEEKS * DAYS_IN_WEEK + 1);
+    startDate.setDate(startDate.getDate() - weeks * DAYS_IN_WEEK + 1);
 
     const cells: Array<{
       date: string;
@@ -120,9 +122,9 @@ export function ContributionChart({
       .filter((v) => v > 0);
     const t = computeThresholds(values);
 
-    const weeks: (typeof cells)[] = [];
+    const weekColumns: (typeof cells)[] = [];
     for (let i = 0; i < cells.length; i += DAYS_IN_WEEK) {
-      weeks.push(cells.slice(i, i + DAYS_IN_WEEK));
+      weekColumns.push(cells.slice(i, i + DAYS_IN_WEEK));
     }
 
     const rangeFrom = selectedRange?.from
@@ -139,11 +141,11 @@ export function ContributionChart({
         : null;
 
     return {
-      grid: weeks,
+      grid: weekColumns,
       selectedBounds: bounds,
       thresholds: t,
     };
-  }, [data, selectedRange]);
+  }, [data, selectedRange, weeks]);
 
   const weekCount = grid.length;
   const minGridWidth = weekCount * CELL_SIZE + (weekCount - 1) * CELL_GAP;
