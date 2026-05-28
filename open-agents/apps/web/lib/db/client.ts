@@ -33,6 +33,7 @@ export const db = new Proxy({} as DrizzleClient, {
         process.env.POSTGRES_URL,
         {
           max: getPostgresMaxConnections(),
+          prepare: false,
         },
       );
       globalForDb.__openAgentsDb = drizzle(

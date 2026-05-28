@@ -35,7 +35,7 @@ if (!url) {
   process.exit(0);
 }
 
-const client = postgres(url, { max: 1 });
+const client = postgres(url, { max: 1, prepare: false });
 const db = drizzle(client);
 
 function getErrorCode(error: unknown): string | undefined {
