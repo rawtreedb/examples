@@ -12,11 +12,7 @@ if (!rawtreeApiKey) {
 }
 
 process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "https://api.rawtree.com/otlp";
-process.env.OTEL_EXPORTER_OTLP_HEADERS =
-  `Authorization=Bearer ${rawtreeApiKey},` +
-  "x-rawtree-traces-table=daytona_traces," +
-  "x-rawtree-metrics-table=daytona_metrics," +
-  "x-rawtree-logs-table=daytona_logs";
+process.env.OTEL_EXPORTER_OTLP_HEADERS = `Authorization=Bearer ${rawtreeApiKey}`;
 
 const daytona = new Daytona({
   apiKey: daytonaApiKey,

@@ -26,8 +26,7 @@ RawTree's OTLP endpoint.
 The demo uses:
 
 - Daytona SDK native OpenTelemetry instrumentation
-- RawTree OTLP headers for direct ingest into `daytona_traces`,
-  `daytona_metrics`, and `daytona_logs`
+- RawTree's default OTLP tables for traces, metrics, and logs
 
 ### `otel/logs.ts`
 
