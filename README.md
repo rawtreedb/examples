@@ -27,8 +27,6 @@ The demo uses:
 
 - Daytona SDK native OpenTelemetry instrumentation for sandbox lifecycle spans
 - RawTree OTLP trace headers for direct ingest into `daytona_traces`
-- `@rawtree/sdk` to query the ingested trace rows after the run
-- A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
 ### `otel/logs.ts`
 

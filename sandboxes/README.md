@@ -21,13 +21,6 @@ DAYTONA_API_KEY=...
 RAWTREE_API_KEY=...
 ```
 
-Optional:
-
-```sh
-RAWTREE_TRACES_TABLE=daytona_traces
-RAWTREE_OTLP_ENDPOINT=https://api.rawtree.com/otlp
-```
-
 ```sh
 npm run sandboxes:daytona
 ```
