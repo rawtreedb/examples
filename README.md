@@ -20,13 +20,14 @@ The demo uses:
 ### `sandboxes/daytona.ts`
 
 Minimal TypeScript script that creates a Daytona TypeScript sandbox, runs a
-small code snippet, and sends Daytona SDK native OpenTelemetry traces to
+small code snippet, and sends Daytona SDK native OpenTelemetry signals to
 RawTree's OTLP endpoint.
 
 The demo uses:
 
-- Daytona SDK native OpenTelemetry instrumentation for sandbox lifecycle spans
-- RawTree OTLP trace headers for direct ingest into `daytona_traces`
+- Daytona SDK native OpenTelemetry instrumentation
+- RawTree OTLP headers for direct ingest into `daytona_traces`,
+  `daytona_metrics`, and `daytona_logs`
 
 ### `otel/logs.ts`
 

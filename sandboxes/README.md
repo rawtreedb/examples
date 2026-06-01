@@ -11,8 +11,9 @@ npm run sandboxes:vercel-ai
 
 ## `daytona.ts`
 
-Creates a Daytona TypeScript sandbox, runs a small code snippet, and exports the
-Daytona SDK's native OpenTelemetry traces to RawTree's OTLP endpoint.
+Creates a Daytona TypeScript sandbox, runs a small code snippet, and configures
+Daytona SDK native OpenTelemetry traces, metrics, and logs for RawTree's OTLP
+endpoint.
 
 Required environment variables:
 

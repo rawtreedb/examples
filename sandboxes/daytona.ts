@@ -14,8 +14,10 @@ if (!rawtreeApiKey) {
 process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "https://api.rawtree.com/otlp";
 process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS =
   `Authorization=Bearer ${rawtreeApiKey},x-rawtree-traces-table=daytona_traces`;
-process.env.OTEL_METRICS_EXPORTER = "none";
-process.env.OTEL_LOGS_EXPORTER = "none";
+process.env.OTEL_EXPORTER_OTLP_METRICS_HEADERS =
+  `Authorization=Bearer ${rawtreeApiKey},x-rawtree-metrics-table=daytona_metrics`;
+process.env.OTEL_EXPORTER_OTLP_LOGS_HEADERS =
+  `Authorization=Bearer ${rawtreeApiKey},x-rawtree-logs-table=daytona_logs`;
 
 const daytona = new Daytona({
   apiKey: daytonaApiKey,
