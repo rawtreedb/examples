@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "npm run sandboxes:vercel-ai",
+    "sandboxes:daytona": "node --env-file=.env.local --import tsx ./sandboxes/daytona.ts",
     "sandboxes:vercel-ai": "node --env-file=.env.local --import tsx ./sandboxes/vercel-ai-sandbox.ts",
     "otel:logs": "node --env-file=.env.local --import tsx ./otel/logs.ts",
     "otel:traces": "node --env-file=.env.local --import tsx ./otel/traces.ts",
@@ -12,6 +13,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.65",
+    "@daytona/sdk": "^0.183.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.218.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.218.0",

@@ -17,6 +17,19 @@ The demo uses:
 - `@rawtree/sdk` to query the ingested trace rows after the run
 - A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
 
+### `sandboxes/daytona.ts`
+
+Minimal TypeScript script that creates a Daytona TypeScript sandbox, runs a
+small code snippet, and sends Daytona SDK native OpenTelemetry traces to
+RawTree's OTLP endpoint.
+
+The demo uses:
+
+- Daytona SDK native OpenTelemetry instrumentation for sandbox lifecycle spans
+- RawTree OTLP trace headers for direct ingest into `daytona_traces`
+- `@rawtree/sdk` to query the ingested trace rows after the run
+- A terminal trace renderer that groups spans by `traceId` and `parentSpanId`
+
 ### `otel/logs.ts`
 
 Node.js OpenTelemetry logs example adapted from PostHog's OTLP logs setup to
@@ -55,6 +68,12 @@ user-facing activity, and leaderboard surfaces to RawTree. See
 RAWTREE_API_KEY=...
 ```
 
+The Daytona sandbox example also needs:
+
+```sh
+DAYTONA_API_KEY=...
+```
+
 Add one model credential path:
 
 ```sh
@@ -75,6 +94,7 @@ vercel env pull .env.local
 
 ```sh
 npm install
+npm run sandboxes:daytona
 npm run sandboxes:vercel-ai
 npm run otel:logs
 npm run otel:traces
