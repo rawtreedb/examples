@@ -28,6 +28,12 @@ The demo uses:
 - Daytona SDK native OpenTelemetry instrumentation
 - RawTree's default OTLP tables for traces, metrics, and logs
 
+### `sandboxes/modal.py`
+
+Minimal Python script based on Modal's hello-world example. It relies on Modal's
+workspace OpenTelemetry integration to send function logs and metrics to
+RawTree's default OTLP tables.
+
 ### `otel/logs.ts`
 
 Node.js OpenTelemetry logs example adapted from PostHog's OTLP logs setup to
@@ -92,6 +98,7 @@ vercel env pull .env.local
 
 ```sh
 npm install
+npm run sandboxes:modal
 npm run sandboxes:daytona
 npm run sandboxes:vercel-ai
 npm run otel:logs

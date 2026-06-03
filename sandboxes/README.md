@@ -25,3 +25,21 @@ RAWTREE_API_KEY=...
 ```sh
 npm run sandboxes:daytona
 ```
+
+## `modal.py`
+
+Runs Modal's hello-world example and relies on Modal's workspace OpenTelemetry
+integration to export function logs and metrics to RawTree's default OTLP
+tables.
+
+Modal workspace OpenTelemetry settings:
+
+```text
+OTLP push URL: https://api.rawtree.com/otlp
+Secret: rawtree-otel
+Secret key: OTEL_HEADER_Authorization
+```
+
+```sh
+npm run sandboxes:modal
+```

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "npm run sandboxes:vercel-ai",
     "sandboxes:daytona": "node --env-file=.env.local --import tsx ./sandboxes/daytona.ts",
+    "sandboxes:modal": "uv run modal run -m sandboxes.modal",
     "sandboxes:vercel-ai": "node --env-file=.env.local --import tsx ./sandboxes/vercel-ai-sandbox.ts",
     "otel:logs": "node --env-file=.env.local --import tsx ./otel/logs.ts",
     "otel:traces": "node --env-file=.env.local --import tsx ./otel/traces.ts",
