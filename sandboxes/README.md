@@ -40,6 +40,21 @@ Secret: rawtree-otel
 Secret key: OTEL_HEADER_Authorization
 ```
 
+Create the Modal secret with:
+
+```sh
+modal secret create rawtree-otel \
+  OTEL_HEADER_Authorization="Bearer $RAWTREE_API_KEY"
+```
+
+Modal turns secret keys prefixed with `OTEL_HEADER_` into OTLP request headers.
+`OTEL_HEADER_Authorization` is sent as the `Authorization` header, so RawTree
+receives:
+
+```text
+Authorization: Bearer <rawtree api key>
+```
+
 ```sh
 npm run sandboxes:modal
 ```

@@ -34,6 +34,13 @@ Minimal Python script based on Modal's hello-world example. It relies on Modal's
 workspace OpenTelemetry integration to send function logs and metrics to
 RawTree's default OTLP tables.
 
+Create the Modal OTEL secret with:
+
+```sh
+modal secret create rawtree-otel \
+  OTEL_HEADER_Authorization="Bearer $RAWTREE_API_KEY"
+```
+
 ### `otel/logs.ts`
 
 Node.js OpenTelemetry logs example adapted from PostHog's OTLP logs setup to
