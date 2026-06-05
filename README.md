@@ -65,6 +65,17 @@ The RawTree OTLP traces endpoint is:
 https://api.rawtree.com/v1/tables/otel_traces?transform=otlp-traces
 ```
 
+### `postgres/supabase-etl/`
+
+Rust example that uses `supabase/etl` to stream rows from a Supabase Postgres
+publication into a RawTree table.
+
+The demo uses:
+
+- Supabase direct Postgres connection for logical replication
+- Supabase ETL's Rust pipeline and in-memory store
+- A RawTree destination that accepts changing row shapes
+
 ### `open-agents/`
 
 Vendored copy of `vercel-labs/open-agents` for adapting its agent metrics,
@@ -84,6 +95,18 @@ The Daytona sandbox example also needs:
 ```sh
 DAYTONA_API_KEY=...
 ```
+
+The Supabase Postgres example also needs:
+
+```sh
+DATABASE_URL=postgres://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require
+POSTGRES_TLS_ROOT_CERT_PATH=./supabase-ca.pem
+POSTGRES_PUBLICATION=rawtree_publication
+RAWTREE_TABLE=supabase_cdc_events
+```
+
+Use the Supabase direct database URL for this example, not the pooler URL,
+because logical replication requires direct replication slots.
 
 Add one model credential path:
 
@@ -110,6 +133,7 @@ npm run sandboxes:daytona
 npm run sandboxes:vercel-ai
 npm run otel:logs
 npm run otel:traces
+npm run postgres:supabase
 ```
 
 The script prints the generated `run_id` and `trace_id`, runs the agent, flushes

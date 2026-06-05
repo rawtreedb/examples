@@ -10,6 +10,7 @@
     "sandboxes:vercel-ai": "node --env-file=.env.local --import tsx ./sandboxes/vercel-ai-sandbox.ts",
     "otel:logs": "node --env-file=.env.local --import tsx ./otel/logs.ts",
     "otel:traces": "node --env-file=.env.local --import tsx ./otel/traces.ts",
+    "postgres:supabase": "cargo run --manifest-path ./postgres/supabase-etl/Cargo.toml",
     "check": "tsc --noEmit"
   },
   "dependencies": {
