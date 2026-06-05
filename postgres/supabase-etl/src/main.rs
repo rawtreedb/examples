@@ -1,4 +1,7 @@
-use std::{collections::HashSet, env, fs};
+use std::{
+    collections::{BTreeMap, HashSet},
+    env, fs,
+};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use etl::{
@@ -12,10 +15,11 @@ use etl::{
     store::MemoryStore,
     types::{
         ArrayCell, Cell, ColumnSchema, Event, OldTableRow, PartialTableRow, PgNumeric,
-        ReplicatedTableSchema, TableRow, UpdatedTableRow,
+        ReplicatedTableSchema, TableName, TableRow, UpdatedTableRow,
     },
 };
-use reqwest::Client;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use reqwest::{Client, StatusCode};
 use serde_json::{json, Map, Value};
 
 #[derive(Clone)]
@@ -23,28 +27,27 @@ struct RawTreeDestination {
     client: Client,
     api_url: String,
     api_key: String,
-    table: String,
 }
 
 impl RawTreeDestination {
-    fn new(api_url: String, api_key: String, table: String) -> Self {
+    fn new(api_url: String, api_key: String) -> Self {
         Self {
             client: Client::new(),
             api_url,
             api_key,
-            table,
         }
     }
 
-    async fn send_rows(&self, rows: Vec<Value>) -> EtlResult<()> {
+    async fn send_rows(&self, table: &str, rows: Vec<Value>) -> EtlResult<()> {
         if rows.is_empty() {
             return Ok(());
         }
 
+        let encoded_table = utf8_percent_encode(table, NON_ALPHANUMERIC);
         let url = format!(
             "{}/v1/tables/{}",
             self.api_url.trim_end_matches('/'),
-            self.table
+            encoded_table
         );
         let response = self
             .client
@@ -73,6 +76,40 @@ impl RawTreeDestination {
 
         Ok(())
     }
+
+    async fn delete_table(&self, table: &str) -> EtlResult<()> {
+        let encoded_table = utf8_percent_encode(table, NON_ALPHANUMERIC);
+        let url = format!(
+            "{}/v1/tables/{}",
+            self.api_url.trim_end_matches('/'),
+            encoded_table
+        );
+        let response = self
+            .client
+            .delete(url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|err| {
+                etl::etl_error!(
+                    ErrorKind::DestinationConnectionFailed,
+                    "RawTree request failed",
+                    err.to_string()
+                )
+            })?;
+
+        if response.status().is_success() || response.status() == StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "".to_owned());
+        Err(etl::etl_error!(
+            ErrorKind::DestinationQueryFailed,
+            "RawTree table delete failed",
+            format!("status={status} body={body}")
+        ))
+    }
 }
 
 impl Destination for RawTreeDestination {
@@ -82,11 +119,13 @@ impl Destination for RawTreeDestination {
 
     async fn drop_table_for_copy(
         &self,
-        _replicated_table_schema: &ReplicatedTableSchema,
+        replicated_table_schema: &ReplicatedTableSchema,
         async_result: DropTableForCopyResult<()>,
     ) -> EtlResult<()> {
-        async_result.send(Ok(()));
-        Ok(())
+        let table = rawtree_table_name(replicated_table_schema.name());
+        let result = self.delete_table(&table).await;
+        async_result.send(result.clone());
+        result
     }
 
     async fn write_table_rows(
@@ -100,11 +139,18 @@ impl Destination for RawTreeDestination {
             .map(|row| {
                 let mut value = row_json(replicated_table_schema.column_schemas(), row);
                 add_table_metadata(&mut value, "copy", replicated_table_schema);
+                add_lsn_metadata(
+                    &mut value,
+                    etl::types::PgLsn::from(0),
+                    etl::types::PgLsn::from(0),
+                    0,
+                );
                 Value::Object(value)
             })
             .collect();
 
-        let result = self.send_rows(rows).await;
+        let table = rawtree_table_name(replicated_table_schema.name());
+        let result = self.send_rows(&table, rows).await;
         async_result.send(result.clone());
         result
     }
@@ -114,8 +160,22 @@ impl Destination for RawTreeDestination {
         events: Vec<Event>,
         async_result: WriteEventsResult<()>,
     ) -> EtlResult<()> {
-        let rows = events.iter().map(event_json).collect();
-        let result = self.send_rows(rows).await;
+        let mut rows_by_table = BTreeMap::<String, Vec<Value>>::new();
+
+        for event in events {
+            for (table, row) in table_event_rows(&event)? {
+                rows_by_table.entry(table).or_default().push(row);
+            }
+        }
+
+        let mut result = Ok(());
+        for (table, rows) in rows_by_table {
+            if let Err(err) = self.send_rows(&table, rows).await {
+                result = Err(err);
+                break;
+            }
+        }
+
         async_result.send(result.clone());
         result
     }
@@ -151,7 +211,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let destination = RawTreeDestination::new(
         env_or("RAWTREE_API_URL", "https://api.rawtree.com"),
         required_env("RAWTREE_API_KEY")?,
-        env_or("RAWTREE_TABLE", "supabase_cdc_events"),
     );
 
     let mut pipeline = Pipeline::new(config, MemoryStore::new(), destination);
@@ -161,25 +220,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn event_json(event: &Event) -> Value {
+fn table_event_rows(event: &Event) -> EtlResult<Vec<(String, Value)>> {
     match event {
-        Event::Begin(event) => json!({
-            "_etl_op": "begin",
-            "_etl_start_lsn": event.start_lsn.to_string(),
-            "_etl_commit_lsn": event.commit_lsn.to_string(),
-            "_etl_tx_ordinal": event.tx_ordinal,
-            "_etl_xid": event.xid,
-            "_etl_timestamp": event.timestamp,
-        }),
-        Event::Commit(event) => json!({
-            "_etl_op": "commit",
-            "_etl_start_lsn": event.start_lsn.to_string(),
-            "_etl_commit_lsn": event.commit_lsn.to_string(),
-            "_etl_end_lsn": event.end_lsn.to_string(),
-            "_etl_tx_ordinal": event.tx_ordinal,
-            "_etl_flags": event.flags,
-            "_etl_timestamp": event.timestamp,
-        }),
         Event::Insert(event) => {
             let mut value = row_json(
                 event.replicated_table_schema.column_schemas(),
@@ -192,7 +234,10 @@ fn event_json(event: &Event) -> Value {
                 event.commit_lsn,
                 event.tx_ordinal,
             );
-            Value::Object(value)
+            Ok(vec![(
+                rawtree_table_name(event.replicated_table_schema.name()),
+                Value::Object(value),
+            )])
         }
         Event::Update(event) => {
             let mut value = match &event.updated_table_row {
@@ -216,7 +261,10 @@ fn event_json(event: &Event) -> Value {
                     Value::Object(old_row_json(&event.replicated_table_schema, old_row)),
                 );
             }
-            Value::Object(value)
+            Ok(vec![(
+                rawtree_table_name(event.replicated_table_schema.name()),
+                Value::Object(value),
+            )])
         }
         Event::Delete(event) => {
             let mut value = event
@@ -231,38 +279,54 @@ fn event_json(event: &Event) -> Value {
                 event.commit_lsn,
                 event.tx_ordinal,
             );
-            Value::Object(value)
+            Ok(vec![(
+                rawtree_table_name(event.replicated_table_schema.name()),
+                Value::Object(value),
+            )])
         }
-        Event::Truncate(event) => json!({
-            "_etl_op": "truncate",
-            "_etl_start_lsn": event.start_lsn.to_string(),
-            "_etl_commit_lsn": event.commit_lsn.to_string(),
-            "_etl_tx_ordinal": event.tx_ordinal,
-            "_etl_options": event.options,
-            "_etl_tables": event.truncated_tables.iter().map(|table| {
-                json!({
-                    "schema": table.name().schema,
-                    "table": table.name().name,
-                    "table_id": table.id().into_inner(),
-                })
-            }).collect::<Vec<_>>(),
-        }),
-        Event::Relation(event) => json!({
-            "_etl_op": "relation",
-            "_etl_start_lsn": event.start_lsn.to_string(),
-            "_etl_commit_lsn": event.commit_lsn.to_string(),
-            "_etl_tx_ordinal": event.tx_ordinal,
-            "_etl_schema": event.replicated_table_schema.name().schema,
-            "_etl_table": event.replicated_table_schema.name().name,
-            "_etl_table_id": event.replicated_table_schema.id().into_inner(),
-            "_etl_columns": event.replicated_table_schema.column_schemas()
-                .map(|column| column.name.clone())
-                .collect::<Vec<_>>(),
-        }),
-        Event::Unsupported => json!({
-            "_etl_op": "unsupported",
-        }),
+        Event::Truncate(event) => event
+            .truncated_tables
+            .iter()
+            .map(|table| {
+                let mut value = Map::new();
+                value.insert("_etl_op".to_owned(), Value::String("truncate".to_owned()));
+                value.insert(
+                    "_etl_start_lsn".to_owned(),
+                    Value::String(event.start_lsn.to_string()),
+                );
+                value.insert(
+                    "_etl_commit_lsn".to_owned(),
+                    Value::String(event.commit_lsn.to_string()),
+                );
+                value.insert(
+                    "_etl_tx_ordinal".to_owned(),
+                    Value::Number(event.tx_ordinal.into()),
+                );
+                value.insert("_etl_options".to_owned(), json!(event.options));
+                value.insert(
+                    "_etl_schema".to_owned(),
+                    Value::String(table.name().schema.clone()),
+                );
+                value.insert(
+                    "_etl_table".to_owned(),
+                    Value::String(table.name().name.clone()),
+                );
+                value.insert(
+                    "_etl_table_id".to_owned(),
+                    Value::Number(table.id().into_inner().into()),
+                );
+                Ok((rawtree_table_name(table.name()), Value::Object(value)))
+            })
+            .collect(),
+        _ => Ok(Vec::new()),
     }
+}
+
+fn rawtree_table_name(table_name: &TableName) -> String {
+    let escaped_schema = table_name.schema.replace('_', "__");
+    let escaped_table = table_name.name.replace('_', "__");
+
+    format!("{escaped_schema}_{escaped_table}")
 }
 
 fn add_table_metadata(

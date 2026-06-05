@@ -102,7 +102,6 @@ The Supabase Postgres example also needs:
 DATABASE_URL=postgres://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require
 POSTGRES_TLS_ROOT_CERT_PATH=./supabase-ca.pem
 POSTGRES_PUBLICATION=rawtree_publication
-RAWTREE_TABLE=supabase_cdc_events
 ```
 
 Use the Supabase direct database URL for this example, not the pooler URL,
