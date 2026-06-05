@@ -130,18 +130,29 @@ with source_events as (
 ),
 latest_truncate as (
   select
-    argMax(commit_lsn_u64, tuple(commit_lsn_u64, tx_ordinal)) as truncate_lsn,
-    argMax(tx_ordinal, tuple(commit_lsn_u64, tx_ordinal)) as truncate_tx_ordinal
+    countIf(toString(_etl_op) = 'truncate') as truncate_count,
+    argMaxIf(
+      commit_lsn_u64,
+      tuple(commit_lsn_u64, tx_ordinal),
+      toString(_etl_op) = 'truncate'
+    ) as truncate_lsn,
+    argMaxIf(
+      tx_ordinal,
+      tuple(commit_lsn_u64, tx_ordinal),
+      toString(_etl_op) = 'truncate'
+    ) as truncate_tx_ordinal
   from source_events
-  where toString(_etl_op) = 'truncate'
 ),
 row_events as (
   select source_events.*
   from source_events
   cross join latest_truncate
   where toString(_etl_op) in ('copy', 'insert', 'update', 'delete')
-    and tuple(commit_lsn_u64, tx_ordinal) >
-      tuple(truncate_lsn, truncate_tx_ordinal)
+    and (
+      truncate_count = 0
+      or tuple(commit_lsn_u64, tx_ordinal) >
+        tuple(truncate_lsn, truncate_tx_ordinal)
+    )
 ),
 latest as (
   select
@@ -176,7 +187,8 @@ The important pieces are:
 - `commit_lsn_u64` converts Postgres LSN text such as `1/F20001D8` into a
   sortable integer.
 - `latest_truncate` ignores row events that happened before the most recent
-  truncate marker in the same RawTree table.
+  truncate marker in the same RawTree table. If there has never been a
+  truncate, `truncate_count = 0` keeps the initial-copy rows.
 - `argMax(column, tuple(commit_lsn_u64, tx_ordinal))` returns the column value
   from the latest event for each primary key.
 - `where last_op != 'delete'` removes rows that no longer exist in Postgres.
