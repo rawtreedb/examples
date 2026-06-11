@@ -124,11 +124,3 @@ jobs:
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
-
-      - name: Make package public
-        run: |
-          gh api --method POST \
-            "/orgs/rawtreedb/packages/container/supabase-etl/visibility" \
-            -f visibility='public'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
